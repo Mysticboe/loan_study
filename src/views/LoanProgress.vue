@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <AppSkeleton v-if="pageLoading" />
   <div v-else class="list-page">
     <div class="bg-shape bg-shape-a"></div>
@@ -9,10 +9,10 @@
       <section class="title-row">
         <div>
           <p class="eyebrow">Loan Studio</p>
-          <h1 class="page-title">我的申请进度</h1>
+          <h1 class="page-title">{{ text.pageTitle }}</h1>
         </div>
         <van-button plain type="primary" class="back-btn" @click="router.push('/apply')">
-          返回申请
+          {{ text.backToApply }}
         </van-button>
       </section>
 
@@ -20,41 +20,48 @@
         <van-list
           v-model:loading="loading"
           :finished="finished"
-          finished-text="没有更多申请了"
+          :finished-text="text.noMore"
           :immediate-check="false"
           @load="onLoad"
         >
+          <van-empty v-if="!loading && !refreshing && list.length === 0 && !errorMessage" :description="text.noData" />
+
+          <van-empty v-if="errorMessage" :description="text.loadFailed">
+            <p class="error-tip">{{ errorMessage }}</p>
+            <van-button plain type="primary" class="retry-btn" @click="retryLoad">{{ text.retry }}</van-button>
+          </van-empty>
+
           <article
             v-for="item in list"
-            :key="item.id"
+            :key="item.applicationId"
             class="process-card"
-            @click="toggleExpand(item.id)"
+            @click="toggleExpand(item.applicationId)"
           >
             <header class="card-header">
-              <span class="order-no">单号：{{ item.no }}</span>
-              <van-tag :type="getStatusType(item.status)" round>{{ item.statusText }}</van-tag>
+              <span class="order-no">{{ text.orderNoPrefix }}{{ item.approvalNo }}</span>
+              <van-tag :type="getStatusType(item.status)" round>{{ item.statusText || text.processing }}</van-tag>
             </header>
 
             <section class="card-content">
               <div class="info-row">
-                <span class="label">申请人</span>
-                <span class="value">{{ item.name }}</span>
+                <span class="label">{{ text.applicant }}</span>
+                <span class="value">{{ item.applicantName }}</span>
               </div>
               <div class="info-row">
-                <span class="label">申请金额</span>
-                <span class="value money">{{ item.amount }}</span>
+                <span class="label">{{ text.amount }}</span>
+                <span class="value money">{{ item.approvedAmount }}</span>
               </div>
             </section>
 
-            <div v-if="isExpanded(item.id)" class="steps-wrapper">
-              <van-steps :active="item.activeStep" active-color="#0f766e">
-                <van-step>申请提交</van-step>
-                <van-step>资料审核</van-step>
-                <van-step>风控评价</van-step>
-                <van-step>待放款</van-step>
+            <div v-if="isExpanded(item.applicationId)" class="steps-wrapper">
+              <van-steps :active="item.activeStep || 0" active-color="#0f766e">
+                <van-step>{{ text.stepSubmitted }}</van-step>
+                <van-step>{{ text.stepReview }}</van-step>
+                <van-step>{{ text.stepRisk }}</van-step>
+                <van-step>{{ text.stepPending }}</van-step>
               </van-steps>
             </div>
-            <p class="expand-tip">{{ isExpanded(item.id) ? '收起进度' : '点击查看详细进度' }}</p>
+            <p class="expand-tip">{{ isExpanded(item.applicationId) ? text.collapse : text.expand }}</p>
           </article>
         </van-list>
       </van-pull-refresh>
@@ -64,8 +71,10 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
+import { showFailToast } from 'vant';
 import { useRouter } from 'vue-router';
 import AppSkeleton from '../components/AppSkeleton.vue';
+import { fetchProgressPage } from '../api/progress';
 
 const router = useRouter();
 const pageLoading = ref(true);
@@ -73,44 +82,58 @@ const loading = ref(false);
 const refreshing = ref(false);
 const finished = ref(false);
 const list = ref([]);
+const errorMessage = ref('');
 const pageNo = ref(1);
 const pageSize = 6;
 const expandedMap = reactive({});
 
-const statusDefs = [
-  { key: 'reviewing', text: '审批中', step: 2, tag: 'primary' },
-  { key: 'rejected', text: '已拒绝', step: 2, tag: 'danger' },
-  { key: 'disbursed', text: '已发放', step: 3, tag: 'success' },
-  { key: 'pending', text: '待放款', step: 3, tag: 'warning' }
-];
-
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const getStatusDef = (index) => statusDefs[index % statusDefs.length];
-
-const amountText = (amount) =>
-  amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const buildMockRows = (page, size) => {
-  if (page > 3) return [];
-  return Array.from({ length: size }).map((_, i) => {
-    const n = (page - 1) * size + i + 1;
-    const status = getStatusDef(n);
-    return {
-      id: `loan-${n}`,
-      no: `APR2026${String(100000 + n).slice(-6)}`,
-      name: ['李建国', '王晓云', '张文涛', '赵子涵'][n % 4],
-      amount: amountText(300000 + n * 52000),
-      status: status.key,
-      statusText: status.text,
-      activeStep: status.step
-    };
-  });
+const text = {
+  pageTitle: '\u6211\u7684\u7533\u8bf7\u8fdb\u5ea6',
+  backToApply: '\u8fd4\u56de\u7533\u8bf7',
+  noMore: '\u6ca1\u6709\u66f4\u591a\u7533\u8bf7\u4e86',
+  noData: '\u6682\u65e0\u7533\u8bf7\u8bb0\u5f55',
+  loadFailed: '\u7533\u8bf7\u8fdb\u5ea6\u52a0\u8f7d\u5931\u8d25',
+  retry: '\u91cd\u8bd5',
+  orderNoPrefix: '\u5355\u53f7\uff1a',
+  processing: '\u5904\u7406\u4e2d',
+  applicant: '\u7533\u8bf7\u4eba',
+  amount: '\u7533\u8bf7\u91d1\u989d',
+  unknownApplicant: '\u672a\u77e5\u7533\u8bf7\u4eba',
+  stepSubmitted: '\u7533\u8bf7\u63d0\u4ea4',
+  stepReview: '\u8d44\u6599\u5ba1\u6838',
+  stepRisk: '\u98ce\u63a7\u8bc4\u4f30',
+  stepPending: '\u5f85\u653e\u6b3e',
+  collapse: '\u6536\u8d77\u8fdb\u5ea6',
+  expand: '\u70b9\u51fb\u67e5\u770b\u8be6\u7ec6\u8fdb\u5ea6',
+  defaultError: '\u52a0\u8f7d\u5931\u8d25'
 };
 
-const getStatusType = (status) => {
-  const found = statusDefs.find((s) => s.key === status);
-  return found ? found.tag : 'primary';
+const statusTypeMap = {
+  reviewing: 'primary',
+  rejected: 'danger',
+  disbursed: 'success',
+  pending: 'warning'
+};
+
+const statusTextMap = {
+  reviewing: '\u5ba1\u6279\u4e2d',
+  rejected: '\u5df2\u62d2\u7edd',
+  disbursed: '\u5df2\u653e\u6b3e',
+  pending: '\u5f85\u653e\u6b3e'
+};
+
+const getStatusType = (status) => statusTypeMap[status] || 'primary';
+const hasBrokenText = (value) => typeof value === 'string' && value.includes('\uFFFD');
+
+const normalizeRow = (row) => {
+  const status = row?.status || 'reviewing';
+  const safeStatusText = hasBrokenText(row?.statusText) ? statusTextMap[status] : row?.statusText;
+  const safeApplicantName = hasBrokenText(row?.applicantName) ? text.unknownApplicant : row?.applicantName;
+  return {
+    ...row,
+    statusText: safeStatusText || statusTextMap[status] || text.processing,
+    applicantName: safeApplicantName || text.unknownApplicant
+  };
 };
 
 const isExpanded = (id) => Boolean(expandedMap[id]);
@@ -121,25 +144,48 @@ const toggleExpand = (id) => {
 
 const onLoad = async () => {
   if (finished.value) return;
+
   loading.value = true;
-  await delay(700);
-  const rows = buildMockRows(pageNo.value, pageSize);
+  errorMessage.value = '';
+  try {
+    const data = await fetchProgressPage({
+      pageNo: pageNo.value,
+      pageSize
+    });
 
-  if (refreshing.value) {
-    list.value = [];
-    refreshing.value = false;
+    const rows = Array.isArray(data.list) ? data.list.map(normalizeRow) : [];
+
+    if (refreshing.value) {
+      list.value = [];
+      refreshing.value = false;
+    }
+
+    list.value = [...list.value, ...rows];
+    pageNo.value += 1;
+    finished.value = !data.hasMore;
+  } catch (error) {
+    errorMessage.value = error.message || text.defaultError;
+    showFailToast(errorMessage.value);
+  } finally {
+    loading.value = false;
   }
-
-  list.value = [...list.value, ...rows];
-  pageNo.value += 1;
-  finished.value = rows.length < pageSize;
-  loading.value = false;
 };
 
 const onRefresh = async () => {
   finished.value = false;
   pageNo.value = 1;
   list.value = [];
+  Object.keys(expandedMap).forEach((key) => {
+    delete expandedMap[key];
+  });
+  await onLoad();
+};
+
+const retryLoad = async () => {
+  errorMessage.value = '';
+  if (list.value.length === 0) {
+    finished.value = false;
+  }
   await onLoad();
 };
 
@@ -282,5 +328,15 @@ onMounted(async () => {
   margin: 10px 0 0;
   font-size: 12px;
   color: #7a8898;
+}
+
+.error-tip {
+  margin: 0;
+  color: #7a8898;
+  font-size: 13px;
+}
+
+.retry-btn {
+  margin-top: 10px;
 }
 </style>

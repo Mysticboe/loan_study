@@ -1,0 +1,15 @@
+import { request } from './http';
+
+export const createLoanApplication = (payload, idempotencyKey) =>
+  request({
+    method: 'POST',
+    path: '/api/loan/applications',
+    body: payload,
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
+  });
+
+export const fetchLoanApplicationDetail = (applicationId) =>
+  request({ method: 'GET', path: `/api/loan/applications/${applicationId}` });
+
+export const fetchLoanApplicationList = ({ pageNo, pageSize }) =>
+  request({ method: 'GET', path: '/api/loan/applications', query: { pageNo, pageSize } });

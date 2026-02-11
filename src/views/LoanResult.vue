@@ -13,30 +13,43 @@
       </section>
 
       <section class="panel">
-        <van-icon name="checked" color="#0f766e" size="80" class="status-icon" />
-        <h2>提交成功</h2>
-        <p class="sub">审批信息已生成，请确认结果</p>
+        <template v-if="errorMessage">
+          <van-empty description="结果加载失败">
+            <p class="error-tip">{{ errorMessage }}</p>
+            <div class="action">
+              <van-button plain type="primary" class="ghost-btn" @click="loadDetail">重新加载</van-button>
+            </div>
+            <div class="action action-small">
+              <van-button plain type="primary" class="ghost-btn" @click="router.push('/apply')">返回申请</van-button>
+            </div>
+          </van-empty>
+        </template>
+        <template v-else>
+          <van-icon name="checked" color="#0f766e" size="80" class="status-icon" />
+          <h2>提交成功</h2>
+          <p class="sub">审批信息已生成，请确认结果</p>
 
-        <van-cell-group inset class="result-group">
-          <van-cell title="审批单号" :value="approvalNo" />
-          <van-cell title="申请人" :value="applicantName" />
-          <van-cell title="审批额度">
-            <template #value>
-              <span class="amount-value" :class="{ 'amount-enter': amountEntered }">{{ approvedAmount }}</span>
-            </template>
-          </van-cell>
-        </van-cell-group>
+          <van-cell-group inset class="result-group">
+            <van-cell title="审批单号" :value="approvalNo" />
+            <van-cell title="申请人" :value="applicantName" />
+            <van-cell title="审批额度">
+              <template #value>
+                <span class="amount-value" :class="{ 'amount-enter': amountEntered }">{{ approvedAmount }}</span>
+              </template>
+            </van-cell>
+          </van-cell-group>
 
-        <div class="action">
-          <van-button plain block type="primary" class="ghost-btn" @click="saveReceipt">
-            保存凭证
-          </van-button>
-        </div>
-        <div class="action action-small">
-          <van-button plain block type="primary" class="ghost-btn" @click="router.push('/progress')">
-            查看详情
-          </van-button>
-        </div>
+          <div class="action">
+            <van-button plain block type="primary" class="ghost-btn" @click="saveReceipt">
+              保存凭证
+            </van-button>
+          </div>
+          <div class="action action-small">
+            <van-button plain block type="primary" class="ghost-btn" @click="router.push('/progress')">
+              查看详情
+            </van-button>
+          </div>
+        </template>
       </section>
     </main>
   </div>
@@ -44,20 +57,50 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { showSuccessToast } from 'vant';
+import { showFailToast, showSuccessToast } from 'vant';
 import { useRoute, useRouter } from 'vue-router';
 import AppSkeleton from '../components/AppSkeleton.vue';
+import { fetchLoanApplicationDetail } from '../api/loan';
 
 const route = useRoute();
 const router = useRouter();
 const pageLoading = ref(true);
 const amountEntered = ref(false);
+const detail = ref(null);
+const errorMessage = ref('');
+const loadingDetail = ref(false);
 
-const applicantName = computed(() => (route.query.name ? String(route.query.name) : '-'));
-const approvedAmount = computed(() => (route.query.amount ? String(route.query.amount) : '-'));
-const approvalNo = computed(() => (route.query.approvalNo ? String(route.query.approvalNo) : `APR${Date.now().toString().slice(-10)}`));
+const applicationId = computed(() => String(route.params.applicationId || ''));
+const applicantName = computed(() => detail.value?.applicantName || '-');
+const approvedAmount = computed(() => detail.value?.approvedAmount || '-');
+const approvalNo = computed(() => detail.value?.approvalNo || '-');
+
+const loadDetail = async () => {
+  if (!applicationId.value || loadingDetail.value) {
+    if (!applicationId.value) errorMessage.value = '缺少申请编号，无法加载结果';
+    return;
+  }
+  loadingDetail.value = true;
+  errorMessage.value = '';
+  try {
+    detail.value = await fetchLoanApplicationDetail(applicationId.value);
+    requestAnimationFrame(() => {
+      amountEntered.value = true;
+    });
+  } catch (error) {
+    errorMessage.value = error.message || '加载审批结果失败';
+    showFailToast(errorMessage.value);
+  } finally {
+    loadingDetail.value = false;
+  }
+};
 
 const saveReceipt = () => {
+  if (!detail.value) {
+    showFailToast('审批结果尚未加载完成');
+    return;
+  }
+
   const content = [
     '信贷审批凭证',
     `审批单号: ${approvalNo.value}`,
@@ -81,9 +124,7 @@ const saveReceipt = () => {
 onMounted(() => {
   setTimeout(() => {
     pageLoading.value = false;
-    requestAnimationFrame(() => {
-      amountEntered.value = true;
-    });
+    loadDetail();
   }, 450);
 });
 </script>
@@ -179,6 +220,12 @@ h2 {
 
 .sub {
   margin: 8px 0 18px;
+  font-size: 13px;
+  color: #5f6f82;
+}
+
+.error-tip {
+  margin: 0;
   font-size: 13px;
   color: #5f6f82;
 }

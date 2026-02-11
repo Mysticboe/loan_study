@@ -34,10 +34,7 @@
             label="验证码"
             placeholder="请输入验证码"
             class="captcha-field"
-            :rules="[
-              { required: true, message: '请输入验证码' },
-              { validator: validateCaptcha, message: '验证码错误' }
-            ]"
+            :rules="[{ required: true, message: '请输入验证码' }]"
           >
             <template #button>
               <div class="captcha-wrapper">
@@ -78,12 +75,15 @@ import { onMounted, reactive, ref } from 'vue';
 import { showFailToast, showSuccessToast } from 'vant';
 import { useRoute, useRouter } from 'vue-router';
 import AppSkeleton from '../components/AppSkeleton.vue';
+import { fetchCaptcha, loginByPassword } from '../api/auth';
+import { saveSession } from '../session/authSession';
 
 const router = useRouter();
 const route = useRoute();
 const pageLoading = ref(true);
 const submitting = ref(false);
-const captchaCode = ref('');
+const loadingCaptcha = ref(false);
+const captchaToken = ref('');
 const captchaImage = ref('');
 const form = reactive({
   username: 'admin',
@@ -91,83 +91,47 @@ const form = reactive({
   captchaInput: ''
 });
 
-const AUTH_KEY = 'loan_study_logged_in';
-
-const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-const createCaptchaCode = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 4; i += 1) {
-    code += chars[rand(0, chars.length - 1)];
+const refreshCaptcha = async () => {
+  if (loadingCaptcha.value) return;
+  loadingCaptcha.value = true;
+  try {
+    const data = await fetchCaptcha();
+    captchaToken.value = data.captchaToken;
+    captchaImage.value = data.imageBase64;
+    form.captchaInput = '';
+  } catch (error) {
+    showFailToast(error.message || '验证码加载失败');
+  } finally {
+    loadingCaptcha.value = false;
   }
-  return code;
 };
-
-const drawCaptcha = (code) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = 110;
-  canvas.height = 38;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-
-  ctx.fillStyle = '#f4f7fb';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  for (let i = 0; i < 4; i += 1) {
-    ctx.strokeStyle = `rgba(${rand(80, 170)}, ${rand(80, 170)}, ${rand(80, 170)}, 0.7)`;
-    ctx.beginPath();
-    ctx.moveTo(rand(0, canvas.width), rand(0, canvas.height));
-    ctx.lineTo(rand(0, canvas.width), rand(0, canvas.height));
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < 28; i += 1) {
-    ctx.fillStyle = `rgba(${rand(120, 200)}, ${rand(120, 200)}, ${rand(120, 200)}, 0.7)`;
-    ctx.fillRect(rand(0, canvas.width), rand(0, canvas.height), 1, 1);
-  }
-
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-  ctx.font = '700 24px Georgia';
-  ctx.fillStyle = '#0f766e';
-  ctx.fillText(code, canvas.width / 2, canvas.height / 2 + 1);
-
-  return canvas.toDataURL('image/png');
-};
-
-const refreshCaptcha = () => {
-  const code = createCaptchaCode();
-  captchaCode.value = code;
-  captchaImage.value = drawCaptcha(code);
-  form.captchaInput = '';
-};
-
-const validateCaptcha = (value) => value.toUpperCase() === captchaCode.value;
 
 const handleLogin = async () => {
   if (!form.username || !form.password || !form.captchaInput) {
     showFailToast('请完整填写登录信息');
     return;
   }
-  if (!validateCaptcha(form.captchaInput)) {
-    showFailToast('验证码错误，请重试');
-    refreshCaptcha();
-    return;
-  }
-  if (form.username !== 'admin' || form.password !== 'admin') {
-    showFailToast('账号或密码错误');
-    refreshCaptcha();
+  if (!captchaToken.value) {
+    showFailToast('验证码已失效，请刷新后重试');
+    await refreshCaptcha();
     return;
   }
 
   submitting.value = true;
   try {
-    sessionStorage.setItem(AUTH_KEY, '1');
-    localStorage.removeItem(AUTH_KEY);
+    const session = await loginByPassword({
+      username: form.username,
+      password: form.password,
+      captchaToken: captchaToken.value,
+      captchaCode: form.captchaInput
+    });
+    saveSession(session);
     showSuccessToast('登录成功');
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/apply';
     await router.replace(redirect);
+  } catch (error) {
+    showFailToast(error.message || '登录失败');
+    await refreshCaptcha();
   } finally {
     submitting.value = false;
   }

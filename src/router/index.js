@@ -3,8 +3,8 @@ import LoanApply from '../views/LoanApply.vue';
 import LoanResult from '../views/LoanResult.vue';
 import LoanProgress from '../views/LoanProgress.vue';
 import Login from '../views/Login.vue';
-
-const AUTH_KEY = 'loan_study_logged_in';
+import { setUnauthorizedHandler } from '../api/http';
+import { clearSession, isSessionValid } from '../session/authSession';
 
 const routes = [
   {
@@ -23,7 +23,7 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/result',
+    path: '/result/:applicationId',
     name: 'Result',
     component: LoanResult,
     meta: { requiresAuth: true }
@@ -42,9 +42,8 @@ const router = createRouter({
 });
 
 router.beforeEach((to) => {
-  const isLoggedIn = sessionStorage.getItem(AUTH_KEY) === '1';
-
-  if (to.meta.requiresAuth && !isLoggedIn) {
+  if (to.meta.requiresAuth && !isSessionValid()) {
+    clearSession();
     return {
       path: '/login',
       query: { redirect: to.fullPath }
@@ -52,6 +51,12 @@ router.beforeEach((to) => {
   }
 
   return true;
+});
+
+setUnauthorizedHandler(() => {
+  const current = router.currentRoute.value;
+  if (current.path === '/login') return;
+  router.replace({ path: '/login', query: { redirect: current.fullPath } });
 });
 
 export default router;
