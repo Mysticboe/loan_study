@@ -13,3 +13,17 @@ export const fetchLoanApplicationDetail = (applicationId) =>
 
 export const fetchLoanApplicationList = ({ pageNo, pageSize }) =>
   request({ method: 'GET', path: '/api/loan/applications', query: { pageNo, pageSize } });
+
+export const searchCustomers = (keyword = '', status = '') =>
+  request({
+    method: 'GET',
+    path: '/api/customer/search',
+    query: { keyword, status }
+  });
+
+export const probeCreditRisk = (payload) =>
+  request({
+    method: 'POST',
+    path: '/api/risk/probe',
+    body: payload
+  });

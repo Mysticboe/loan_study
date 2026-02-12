@@ -1,0 +1,558 @@
+<template>
+  <div class="whitelist-page">
+    <van-nav-bar
+      title="同业准入申请"
+      left-text="返回"
+      left-arrow
+      fixed
+      class="page-nav"
+      @click-left="goBack"
+    />
+
+    <main class="page-content">
+      <section class="panel">
+        <div class="panel-title">申请模式</div>
+        <van-tabs v-model:active="activeTab" line-width="20" color="#0f766e">
+          <van-tab title="单户申请" name="single" />
+          <van-tab title="批量准入" name="batch" />
+        </van-tabs>
+      </section>
+
+      <section class="panel">
+        <van-search
+          v-model.trim="searchKeyword"
+          shape="round"
+          placeholder="搜索客户名称或编号"
+          class="search-box"
+          @search="refreshCustomers"
+          @clear="refreshCustomers"
+        />
+
+        <button type="button" class="status-trigger" @click="statusPickerVisible = true">
+          <div class="status-left">
+            <van-icon name="filter-o" class="status-icon" />
+            <span class="status-label">{{ selectedStatusLabel }}</span>
+          </div>
+          <van-icon name="arrow-down" class="status-arrow" />
+        </button>
+
+        <div v-if="searching" class="empty-tip">搜索中...</div>
+
+        <template v-else>
+          <div v-if="displayCustomers.length === 0" class="empty-wrap">
+            <div class="empty-tip">未匹配到同业客户</div>
+            <van-button plain type="primary" size="small" class="create-btn" @click="handleCreateCustomer">
+              手工新建同业客户
+            </van-button>
+          </div>
+
+          <div v-else class="customer-list">
+            <template v-if="activeTab === 'single'">
+              <button
+                v-for="customer in displayCustomers"
+                :key="customer.id"
+                type="button"
+                class="customer-item customer-item--button"
+                :class="{ disabled: customer.status === '生效' }"
+                @click="handleSingleSelect(customer)"
+              >
+                <div class="customer-main">
+                  <div class="customer-name">{{ customer.name }}</div>
+                  <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+                </div>
+                <div class="customer-side">
+                  <van-tag plain :color="statusColor(customer.status)">{{ customer.status }}</van-tag>
+                  <div v-if="customer.hasInProcess" class="task-tip">在途：{{ customer.processId }}</div>
+                </div>
+              </button>
+            </template>
+
+            <template v-else>
+              <van-checkbox-group v-model="batchSelectedIds">
+                <div
+                  v-for="customer in displayCustomers"
+                  :key="customer.id"
+                  class="customer-item customer-item--check"
+                  :class="{ disabled: customer.status === '生效' }"
+                  @click="toggleBatchSelection(customer)"
+                >
+                  <van-checkbox :name="customer.id" @click.stop />
+                  <div class="customer-main">
+                    <div class="customer-name">{{ customer.name }}</div>
+                    <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+                  </div>
+                  <div class="customer-side">
+                    <van-tag plain :color="statusColor(customer.status)">{{ customer.status }}</van-tag>
+                    <div v-if="customer.hasInProcess" class="task-tip">在途：{{ customer.processId }}</div>
+                  </div>
+                </div>
+              </van-checkbox-group>
+            </template>
+          </div>
+        </template>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">申请信息</div>
+        <van-cell title="拟申请状态" value="生效（锁定）" />
+        <van-field
+          v-model.trim="opinion"
+          type="textarea"
+          rows="4"
+          maxlength="200"
+          show-word-limit
+          label="意见详情"
+          placeholder="请输入意见详情（最多200字）"
+        />
+        <div v-if="activeTab === 'single'" class="selected-tip">
+          已选客户：{{ selectedSingleCustomer ? selectedSingleCustomer.name : '未选择' }}
+        </div>
+        <div v-else class="selected-tip">已选客户：{{ batchSelectedIds.length }} 户</div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <van-button
+        type="primary"
+        block
+        round
+        class="submit-btn"
+        :loading="submitting"
+        loading-text="提交中..."
+        @click="submitApply"
+      >
+        提交准入申请
+      </van-button>
+    </footer>
+
+    <van-action-sheet
+      v-model:show="statusPickerVisible"
+      :actions="statusActions"
+      cancel-text="取消"
+      close-on-click-action
+      @select="handleSelectStatus"
+    />
+  </div>
+</template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue';
+import { showConfirmDialog, showDialog, showFailToast, showLoadingToast, showSuccessToast, showToast } from 'vant';
+import { useRouter } from 'vue-router';
+import { searchCustomers } from '../api/loan';
+
+const router = useRouter();
+const ALLOWED_STATUS = ['未纳入', '失效'];
+
+const activeTab = ref('single');
+const searchKeyword = ref('');
+const selectedStatus = ref('');
+const statusPickerVisible = ref(false);
+const searching = ref(false);
+const submitting = ref(false);
+const opinion = ref('');
+
+const customerOptions = ref([]);
+const selectedSingleId = ref('');
+const batchSelectedIds = ref([]);
+
+const statusOptions = [
+  { text: '全部状态', value: '' },
+  { text: '生效', value: '生效' },
+  { text: '失效', value: '失效' },
+  { text: '未纳入', value: '未纳入' }
+];
+
+const selectedStatusLabel = computed(() => {
+  const option = statusOptions.find((item) => item.value === selectedStatus.value);
+  return option ? option.text : '全部状态';
+});
+
+const statusActions = computed(() => {
+  return statusOptions.map((item) => ({
+    name: item.text,
+    value: item.value,
+    color: item.value === selectedStatus.value ? '#0f766e' : '#1f2d3d'
+  }));
+});
+
+const displayCustomers = computed(() => customerOptions.value);
+
+const selectedSingleCustomer = computed(() => {
+  return customerOptions.value.find((item) => item.id === selectedSingleId.value) || null;
+});
+
+function goBack() {
+  if (window.history.length > 1) {
+    router.back();
+    return;
+  }
+  router.replace('/workbench');
+}
+
+function statusColor(status) {
+  if (status === '生效') return '#16a34a';
+  if (status === '失效') return '#f59e0b';
+  return '#64748b';
+}
+
+function checkStatus(customer) {
+  if (ALLOWED_STATUS.includes(customer.status)) return { valid: true, message: '' };
+  if (customer.status === '生效') return { valid: false, message: '该客户已准入，无需重复申请' };
+  return { valid: false, message: '当前状态不允许发起准入申请' };
+}
+
+function checkInProcess(customer) {
+  if (!customer.hasInProcess) return { valid: true, message: '' };
+  return { valid: false, message: `存在在途任务：${customer.processId || '未知流水号'}` };
+}
+
+async function refreshCustomers() {
+  searching.value = true;
+  try {
+    const data = await searchCustomers(searchKeyword.value, selectedStatus.value);
+    customerOptions.value = Array.isArray(data?.list) ? data.list : [];
+
+    batchSelectedIds.value = batchSelectedIds.value.filter((id) =>
+      customerOptions.value.some((item) => item.id === id)
+    );
+    if (selectedSingleId.value && !customerOptions.value.some((item) => item.id === selectedSingleId.value)) {
+      selectedSingleId.value = '';
+    }
+  } catch (error) {
+    showFailToast(error?.message || '客户搜索失败');
+  } finally {
+    searching.value = false;
+  }
+}
+
+function handleSelectStatus(action) {
+  selectedStatus.value = action.value;
+  refreshCustomers();
+}
+
+function handleCreateCustomer() {
+  showToast('请先在信贷系统维护客户基础信息');
+}
+
+async function handleSingleSelect(customer) {
+  const statusResult = checkStatus(customer);
+  if (!statusResult.valid) {
+    showFailToast(statusResult.message);
+    return;
+  }
+
+  const inProcessResult = checkInProcess(customer);
+  if (!inProcessResult.valid) {
+    await showDialog({
+      title: '在途任务拦截',
+      message: inProcessResult.message,
+      confirmButtonText: '我知道了'
+    });
+    return;
+  }
+
+  try {
+    await showConfirmDialog({
+      title: '确认单户准入',
+      message: `客户“${customer.name}”拟申请状态将锁定为“生效”，确认继续？`,
+      confirmButtonText: '确认',
+      cancelButtonText: '取消'
+    });
+    selectedSingleId.value = customer.id;
+    showSuccessToast('已选择该客户');
+  } catch {
+    // canceled
+  }
+}
+
+async function toggleBatchSelection(customer) {
+  const exists = batchSelectedIds.value.includes(customer.id);
+  if (exists) {
+    batchSelectedIds.value = batchSelectedIds.value.filter((id) => id !== customer.id);
+    return;
+  }
+
+  const statusResult = checkStatus(customer);
+  if (!statusResult.valid) {
+    showFailToast(statusResult.message);
+    return;
+  }
+
+  const inProcessResult = checkInProcess(customer);
+  if (!inProcessResult.valid) {
+    await showDialog({
+      title: '在途任务拦截',
+      message: inProcessResult.message,
+      confirmButtonText: '我知道了'
+    });
+    return;
+  }
+
+  batchSelectedIds.value = [...batchSelectedIds.value, customer.id];
+}
+
+function validateOpinion() {
+  if (!opinion.value) {
+    showFailToast('请填写意见详情');
+    return false;
+  }
+  if (opinion.value.length > 200) {
+    showFailToast('意见详情不能超过200字');
+    return false;
+  }
+  return true;
+}
+
+function getSelectedBatchCustomers() {
+  return customerOptions.value.filter((item) => batchSelectedIds.value.includes(item.id));
+}
+
+function validateBatchSelection(customers) {
+  for (const customer of customers) {
+    const statusResult = checkStatus(customer);
+    if (!statusResult.valid) return statusResult;
+    const inProcessResult = checkInProcess(customer);
+    if (!inProcessResult.valid) return inProcessResult;
+  }
+  return { valid: true, message: '' };
+}
+
+async function submitSingleApply() {
+  if (!selectedSingleCustomer.value) {
+    showFailToast('请先选择客户');
+    return;
+  }
+  if (!validateOpinion()) return;
+
+  const loading = showLoadingToast({ message: '提交中...', duration: 0, forbidClick: true });
+  submitting.value = true;
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    showSuccessToast('准入申请提交成功');
+    router.replace('/workbench');
+  } finally {
+    loading.close();
+    submitting.value = false;
+  }
+}
+
+async function submitBatchApply() {
+  if (batchSelectedIds.value.length === 0) {
+    showFailToast('请至少选择1户客户');
+    return;
+  }
+  if (!validateOpinion()) return;
+
+  const selectedRows = getSelectedBatchCustomers();
+  const validResult = validateBatchSelection(selectedRows);
+  if (!validResult.valid) {
+    showFailToast(validResult.message);
+    return;
+  }
+
+  const loading = showLoadingToast({ message: '提交中...', duration: 0, forbidClick: true });
+  submitting.value = true;
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+    showSuccessToast(`批量准入申请提交成功（${selectedRows.length}户）`);
+    router.replace('/workbench');
+  } finally {
+    loading.close();
+    submitting.value = false;
+  }
+}
+
+function submitApply() {
+  if (activeTab.value === 'single') {
+    submitSingleApply();
+    return;
+  }
+  submitBatchApply();
+}
+
+onMounted(() => {
+  refreshCustomers();
+});
+</script>
+
+<style scoped>
+:root {
+  --primary-color: #0f766e;
+  --panel-bg: rgba(255, 255, 255, 0.78);
+  --text-primary: #13233a;
+  --text-secondary: #5f6f82;
+}
+
+.whitelist-page {
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+  padding-bottom: 84px;
+}
+
+.page-nav {
+  --van-nav-bar-icon-color: #0f766e;
+  --van-nav-bar-title-text-color: #13233a;
+  --van-nav-bar-background: rgba(255, 255, 255, 0.9);
+}
+
+.page-content {
+  padding: 58px 12px 10px;
+}
+
+.panel {
+  background: var(--panel-bg);
+  border-radius: 14px;
+  backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: 0 8px 18px rgba(16, 38, 67, 0.08);
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.panel-title {
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.search-box {
+  margin-bottom: 8px;
+}
+
+.status-trigger {
+  width: 100%;
+  border: 0;
+  border-radius: 999px;
+  background: #f2f3f5;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #323233;
+  min-height: 40px;
+}
+
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-icon {
+  color: #969799;
+  font-size: 16px;
+}
+
+.status-label {
+  font-size: 14px;
+  color: #646566;
+}
+
+.status-arrow {
+  color: #969799;
+  font-size: 14px;
+}
+
+.empty-wrap {
+  padding: 12px 6px;
+  text-align: center;
+}
+
+.empty-tip {
+  font-size: 13px;
+  color: #7b8ca2;
+}
+
+.create-btn {
+  margin-top: 10px;
+}
+
+.customer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.customer-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 118, 110, 0.12);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.customer-item--button {
+  text-align: left;
+  cursor: pointer;
+}
+
+.customer-item--check {
+  cursor: pointer;
+}
+
+.customer-item.disabled {
+  opacity: 0.65;
+}
+
+.customer-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.customer-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a2e42;
+}
+
+.customer-no {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #6f8096;
+}
+
+.customer-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.task-tip {
+  font-size: 11px;
+  color: #ef4444;
+}
+
+.selected-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.page-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 10px 12px 14px;
+  background: linear-gradient(180deg, rgba(237, 243, 250, 0) 0%, rgba(237, 243, 250, 0.92) 36%);
+}
+
+.submit-btn {
+  border: 0;
+  background: linear-gradient(135deg, #0f766e 0%, #0b625b 100%);
+  box-shadow: 0 8px 16px rgba(15, 118, 110, 0.24);
+}
+
+:deep(.van-tabs__line) {
+  background-color: #0f766e;
+}
+</style>

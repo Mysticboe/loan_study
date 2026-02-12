@@ -232,5 +232,110 @@ export const mockRequest = async ({ method, path, body, headers }) => {
     };
   }
 
+  if (method === 'GET' && cleanPath === '/api/customer/search') {
+    const query = new URLSearchParams(path.split('?')[1] || '');
+    const keyword = (query.get('keyword') || '').trim();
+    const status = (query.get('status') || '').trim();
+    const customers = [
+      {
+        id: 'C001',
+        name: '中国建设银行',
+        status: '生效',
+        type: '银行金融机构',
+        hasInProcess: false,
+        hasValidQuota: true,
+        previousQuota: {
+          totalExposure: 3600000000,
+          selfRunExposure: 2500000000,
+          assetManageExposure: 1100000000
+        }
+      },
+      {
+        id: 'C002',
+        name: '招商证券',
+        status: '失效',
+        type: '非银行金融机构',
+        hasInProcess: false,
+        hasValidQuota: false,
+        previousQuota: {
+          totalExposure: 0,
+          selfRunExposure: 0,
+          assetManageExposure: 0
+        }
+      },
+      {
+        id: 'C003',
+        name: '兴业基金',
+        status: '未纳入',
+        type: '非银行金融机构',
+        hasInProcess: false,
+        hasValidQuota: false,
+        previousQuota: {
+          totalExposure: 0,
+          selfRunExposure: 0,
+          assetManageExposure: 0
+        }
+      },
+      {
+        id: 'C004',
+        name: '浦发银行',
+        status: '未纳入',
+        type: '银行金融机构',
+        hasInProcess: true,
+        processId: 'LC202602120001',
+        hasValidQuota: true,
+        previousQuota: {
+          totalExposure: 2100000000,
+          selfRunExposure: 1400000000,
+          assetManageExposure: 700000000
+        }
+      }
+    ];
+
+    const list = customers.filter((item) => {
+      const keywordMatch = !keyword || item.name.includes(keyword) || item.id.includes(keyword);
+      const statusMatch = !status || item.status === status;
+      return keywordMatch && statusMatch;
+    });
+
+    return { list };
+  }
+
+  if (method === 'POST' && cleanPath === '/api/risk/probe') {
+    const payload = body || {};
+    const customerId = String(payload.customerId || '');
+    const detailExposure = Number(payload.selfRunDetailExposure || 0);
+    const totalExposure = Number(payload.totalExposure || 0);
+
+    if (!customerId) {
+      throw jsonError(400, '风险探测缺少客户信息');
+    }
+
+    if (customerId === 'C002') {
+      return {
+        pass: false,
+        riskLevel: 'high',
+        hitType: 'blacklist',
+        message: '命中黑名单客户，禁止提交授信申请'
+      };
+    }
+
+    if (customerId === 'C004' || totalExposure > 5000000000 || detailExposure > 3200000000) {
+      return {
+        pass: false,
+        riskLevel: 'medium',
+        hitType: 'related',
+        message: '存在关联交易风险，需人工复核'
+      };
+    }
+
+    return {
+      pass: true,
+      riskLevel: 'low',
+      hitType: 'none',
+      message: '风险探测通过'
+    };
+  }
+
   throw jsonError(404, `\u672a\u5339\u914d\u5230\u63a5\u53e3: ${method} ${cleanPath}`);
 };

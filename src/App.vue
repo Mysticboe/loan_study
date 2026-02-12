@@ -1,5 +1,7 @@
-<template>
-  <router-view />
+﻿﻿<template>
+  <transition name="fade" mode="out-in">
+    <router-view />
+  </transition>
   <div
     class="gesture-feedback"
     :class="[`side-${indicatorSide}`, { visible: indicatorVisible }]"
@@ -131,6 +133,17 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 路由转场动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
 .gesture-feedback {
   position: fixed;
   top: 50%;
