@@ -232,5 +232,50 @@ export const mockRequest = async ({ method, path, body, headers }) => {
     };
   }
 
+  if (method === 'GET' && cleanPath === '/api/customer/search') {
+    const query = new URLSearchParams(path.split('?')[1] || '');
+    const keyword = (query.get('keyword') || '').trim();
+    const status = (query.get('status') || '').trim();
+    const customers = [
+      {
+        id: 'C001',
+        name: '中国建设银行',
+        status: '生效',
+        type: '银行金融机构',
+        hasInProcess: false
+      },
+      {
+        id: 'C002',
+        name: '招商证券',
+        status: '失效',
+        type: '非银行金融机构',
+        hasInProcess: false
+      },
+      {
+        id: 'C003',
+        name: '兴业基金',
+        status: '未纳入',
+        type: '非银行金融机构',
+        hasInProcess: false
+      },
+      {
+        id: 'C004',
+        name: '浦发银行',
+        status: '未纳入',
+        type: '银行金融机构',
+        hasInProcess: true,
+        processId: 'LC202602120001'
+      }
+    ];
+
+    const list = customers.filter((item) => {
+      const keywordMatch = !keyword || item.name.includes(keyword) || item.id.includes(keyword);
+      const statusMatch = !status || item.status === status;
+      return keywordMatch && statusMatch;
+    });
+
+    return { list };
+  }
+
   throw jsonError(404, `\u672a\u5339\u914d\u5230\u63a5\u53e3: ${method} ${cleanPath}`);
 };

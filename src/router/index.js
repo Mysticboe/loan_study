@@ -4,6 +4,7 @@ import LoanResult from '../views/LoanResult.vue';
 import LoanProgress from '../views/LoanProgress.vue';
 import Login from '../views/Login.vue';
 import Workbench from '../views/Workbench.vue';
+import WhitelistApply from '../views/WhitelistApply.vue';
 import { setUnauthorizedHandler } from '../api/http';
 import { clearSession, isSessionValid } from '../session/authSession';
 
@@ -39,6 +40,12 @@ const routes = [
     path: '/workbench',
     name: 'Workbench',
     component: Workbench,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/whitelist-apply',
+    name: 'WhitelistApply',
+    component: WhitelistApply,
     meta: { requiresAuth: true }
   }
 ];
