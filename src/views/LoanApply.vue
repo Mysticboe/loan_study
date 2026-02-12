@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿<template>
   <AppSkeleton v-if="pageLoading" />
   <div v-else class="apply-page">
     <div class="bg-shape bg-shape-a"></div>
@@ -12,7 +12,7 @@
         </div>
         <div class="header-actions">
           <van-button text="进度" type="primary" plain class="ghost-head-btn" @click="goProgress" />
-          <van-button text="退出" type="primary" plain class="logout-btn" @click="logout" />
+          <van-button text="返回工作台" type="primary" plain class="logout-btn" @click="goWorkbench" />
         </div>
       </section>
 
@@ -83,12 +83,13 @@
 
 <script setup>
 import { onMounted, ref, reactive, computed } from 'vue';
-import { showFailToast } from 'vant';
+import { showFailToast, showSuccessToast } from 'vant';
 import { useRouter } from 'vue-router';
 import LoanInfo from '../components/LoanInfo.vue';
 import AppSkeleton from '../components/AppSkeleton.vue';
+import { createLoanApplication } from '../api/loan';
+import { uploadIdCards } from '../api/upload';
 
-const AUTH_KEY = 'loan_study_logged_in';
 const router = useRouter();
 const pageLoading = ref(true);
 const isAgreed = ref(false);
@@ -129,30 +130,40 @@ const submitApply = async () => {
     showFailToast('请先上传身份证影像');
     return;
   }
+  if (!formData.customerName || !formData.idCard || !formData.birthDate || !formData.collateralValue) {
+    showFailToast('请完整填写申请信息');
+    return;
+  }
 
   submitting.value = true;
   try {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const approvalNo = `APR${Date.now().toString().slice(-10)}`;
-    router.push({
-      path: '/result',
-      query: {
-        name: formData.customerName,
-        amount: loanAmount.value,
-        approvalNo
-      }
-    });
+    const files = idImages.value
+      .map((item) => item.file)
+      .filter((file) => file instanceof File);
+
+    const uploadResult = await uploadIdCards(files);
+    const idCardFileIds = uploadResult.files.map((item) => item.fileId);
+
+    const idempotencyKey = `loan_apply_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const payload = {
+      customerName: formData.customerName,
+      idCard: formData.idCard,
+      birthDate: formData.birthDate,
+      collateralValue: Number(formData.collateralValue),
+      idCardFileIds
+    };
+    const result = await createLoanApplication(payload, idempotencyKey);
+    showSuccessToast('提交成功');
+    router.push(`/result/${result.applicationId}`);
   } catch (error) {
-    showFailToast('提交失败');
+    showFailToast(error.message || '提交失败');
   } finally {
     submitting.value = false;
   }
 };
 
-const logout = () => {
-  sessionStorage.removeItem(AUTH_KEY);
-  localStorage.removeItem(AUTH_KEY);
-  router.replace('/login');
+const goWorkbench = () => {
+  router.push('/workbench');
 };
 
 const goProgress = () => {
