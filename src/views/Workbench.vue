@@ -579,7 +579,7 @@ function handleQuickAction(item) {
     return;
   }
   if (item.icon === 'edit') {
-    router.push('/apply');
+    router.push('/apply-detail');
     return;
   }
   showToast(`${item.text} 功能开发中`);
