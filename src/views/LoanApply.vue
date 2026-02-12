@@ -12,7 +12,7 @@
         </div>
         <div class="header-actions">
           <van-button text="进度" type="primary" plain class="ghost-head-btn" @click="goProgress" />
-          <van-button text="退出" type="primary" plain class="logout-btn" @click="logout" />
+          <van-button text="返回工作台" type="primary" plain class="logout-btn" @click="goWorkbench" />
         </div>
       </section>
 
@@ -87,7 +87,6 @@ import { showFailToast, showSuccessToast } from 'vant';
 import { useRouter } from 'vue-router';
 import LoanInfo from '../components/LoanInfo.vue';
 import AppSkeleton from '../components/AppSkeleton.vue';
-import { clearSession } from '../session/authSession';
 import { createLoanApplication } from '../api/loan';
 import { uploadIdCards } from '../api/upload';
 
@@ -163,9 +162,8 @@ const submitApply = async () => {
   }
 };
 
-const logout = () => {
-  clearSession();
-  router.replace('/login');
+const goWorkbench = () => {
+  router.push('/workbench');
 };
 
 const goProgress = () => {

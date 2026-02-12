@@ -3,13 +3,14 @@ import LoanApply from '../views/LoanApply.vue';
 import LoanResult from '../views/LoanResult.vue';
 import LoanProgress from '../views/LoanProgress.vue';
 import Login from '../views/Login.vue';
+import Workbench from '../views/Workbench.vue';
 import { setUnauthorizedHandler } from '../api/http';
 import { clearSession, isSessionValid } from '../session/authSession';
 
 const routes = [
   {
     path: '/',
-    redirect: '/login'
+    redirect: '/workbench'
   },
   {
     path: '/login',
@@ -32,6 +33,12 @@ const routes = [
     path: '/progress',
     name: 'Progress',
     component: LoanProgress,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/workbench',
+    name: 'Workbench',
+    component: Workbench,
     meta: { requiresAuth: true }
   }
 ];

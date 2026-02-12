@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <AppSkeleton v-if="pageLoading" />
   <div v-else class="login-page">
     <div class="bg-shape bg-shape-a"></div>
@@ -64,7 +64,7 @@
           </div>
         </van-form>
 
-        <p class="tips">测试账号：admin / admin</p>
+
       </section>
     </main>
   </div>
@@ -127,7 +127,7 @@ const handleLogin = async () => {
     });
     saveSession(session);
     showSuccessToast('登录成功');
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/apply';
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/workbench';
     await router.replace(redirect);
   } catch (error) {
     showFailToast(error.message || '登录失败');
