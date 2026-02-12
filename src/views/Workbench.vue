@@ -276,13 +276,14 @@ function renderGaugeChart() {
   gaugeChart.setOption({
     tooltip: {
       trigger: 'item',
-      formatter: () =>
-        [
+      formatter: () => {
+        return [
           '全行自营总额度',
           `占用额度：${formatMaskedAmount(usedSelfQuota.value)}`,
           `总额度：${formatMaskedAmount(totalSelfQuota.value)}`,
           `占用比例：${(usageRatio.value * 100).toFixed(2)}%`
-        ].join('<br/>')
+        ].join('<br/>');
+      }
     },
     series: [
       {
@@ -573,8 +574,12 @@ function handleResize() {
 }
 
 function handleQuickAction(item) {
-  if (item.text === '授信申请') {
-    router.push('/apply');
+  if (item.icon === 'add-o') {
+    router.push('/whitelist-apply');
+    return;
+  }
+  if (item.icon === 'edit') {
+    router.push('/apply-detail');
     return;
   }
   showToast(`${item.text} 功能开发中`);
