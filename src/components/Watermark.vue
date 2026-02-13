@@ -2,7 +2,7 @@
   <div class="watermark-layer" aria-hidden="true">
     <div class="watermark-grid">
       <span v-for="index in markCount" :key="index" class="watermark-item">
-        Li Jianguo | 2026-02-12
+        李建国 | {{ currentDate }}
       </span>
     </div>
   </div>
@@ -10,6 +10,8 @@
 
 <script setup>
 const markCount = 64;
+const now = new Date();
+const currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 </script>
 
 <style scoped>

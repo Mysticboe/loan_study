@@ -10,109 +10,170 @@
     />
 
     <main class="page-content">
-      <section class="panel">
-        <div class="panel-title">申请模式</div>
-        <van-tabs v-model:active="activeTab" line-width="20" color="#0f766e">
-          <van-tab title="单户申请" name="single" />
-          <van-tab title="批量准入" name="batch" />
-        </van-tabs>
-      </section>
+      <van-tabs v-model:active="mainTab" sticky animated swipeable color="#0f766e" class="main-tabs">
+        <van-tab title="准入申请" name="apply">
+          <div class="tab-content">
+            <section class="panel">
+              <div class="panel-title">申请模式</div>
+              <van-tabs v-model:active="activeTab" line-width="20" color="#0f766e">
+                <van-tab title="单户申请" name="single" />
+                <van-tab title="批量准入" name="batch" />
+              </van-tabs>
+            </section>
 
-      <section class="panel">
-        <van-search
-          v-model.trim="searchKeyword"
-          shape="round"
-          placeholder="搜索客户名称或编号"
-          class="search-box"
-          @search="refreshCustomers"
-          @clear="refreshCustomers"
-        />
+            <section class="panel">
+              <van-search
+                v-model.trim="searchKeyword"
+                shape="round"
+                placeholder="搜索客户名称或编号"
+                class="search-box"
+                @search="refreshCustomers"
+                @clear="refreshCustomers"
+              />
 
-        <button type="button" class="status-trigger" @click="statusPickerVisible = true">
-          <div class="status-left">
-            <van-icon name="filter-o" class="status-icon" />
-            <span class="status-label">{{ selectedStatusLabel }}</span>
-          </div>
-          <van-icon name="arrow-down" class="status-arrow" />
-        </button>
-
-        <div v-if="searching" class="empty-tip">搜索中...</div>
-
-        <template v-else>
-          <div v-if="displayCustomers.length === 0" class="empty-wrap">
-            <div class="empty-tip">未匹配到同业客户</div>
-            <van-button plain type="primary" size="small" class="create-btn" @click="handleCreateCustomer">
-              手工新建同业客户
-            </van-button>
-          </div>
-
-          <div v-else class="customer-list">
-            <template v-if="activeTab === 'single'">
-              <button
-                v-for="customer in displayCustomers"
-                :key="customer.id"
-                type="button"
-                class="customer-item customer-item--button"
-                :class="{ disabled: customer.status === '生效' }"
-                @click="handleSingleSelect(customer)"
-              >
-                <div class="customer-main">
-                  <div class="customer-name">{{ customer.name }}</div>
-                  <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+              <button type="button" class="status-trigger" @click="statusPickerVisible = true">
+                <div class="status-left">
+                  <van-icon name="filter-o" class="status-icon" />
+                  <span class="status-label">{{ selectedStatusLabel }}</span>
                 </div>
-                <div class="customer-side">
-                  <van-tag plain :color="statusColor(customer.status)">{{ customer.status }}</van-tag>
-                  <div v-if="customer.hasInProcess" class="task-tip">在途：{{ customer.processId }}</div>
-                </div>
+                <van-icon name="arrow-down" class="status-arrow" />
               </button>
-            </template>
 
-            <template v-else>
-              <van-checkbox-group v-model="batchSelectedIds">
-                <div
-                  v-for="customer in displayCustomers"
-                  :key="customer.id"
-                  class="customer-item customer-item--check"
-                  :class="{ disabled: customer.status === '生效' }"
-                  @click="toggleBatchSelection(customer)"
-                >
-                  <van-checkbox :name="customer.id" @click.stop />
-                  <div class="customer-main">
-                    <div class="customer-name">{{ customer.name }}</div>
-                    <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
-                  </div>
-                  <div class="customer-side">
-                    <van-tag plain :color="statusColor(customer.status)">{{ customer.status }}</van-tag>
-                    <div v-if="customer.hasInProcess" class="task-tip">在途：{{ customer.processId }}</div>
-                  </div>
+              <div v-if="searching" class="empty-tip">搜索中...</div>
+
+              <template v-else>
+                <div v-if="displayCustomers.length === 0" class="empty-wrap">
+                  <div class="empty-tip">未匹配到同业客户</div>
+                  <van-button plain type="primary" size="small" class="create-btn" @click="handleCreateCustomer">
+                    手工新建同业客户
+                  </van-button>
                 </div>
-              </van-checkbox-group>
-            </template>
-          </div>
-        </template>
-      </section>
 
-      <section class="panel">
-        <div class="panel-title">申请信息</div>
-        <van-cell title="拟申请状态" value="生效（锁定）" />
-        <van-field
-          v-model.trim="opinion"
-          type="textarea"
-          rows="4"
-          maxlength="200"
-          show-word-limit
-          label="意见详情"
-          placeholder="请输入意见详情（最多200字）"
-        />
-        <div v-if="activeTab === 'single'" class="selected-tip">
-          已选客户：{{ selectedSingleCustomer ? selectedSingleCustomer.name : '未选择' }}
-        </div>
-        <div v-else class="selected-tip">已选客户：{{ batchSelectedIds.length }} 户</div>
-      </section>
+                <div v-else class="customer-list">
+                  <template v-if="activeTab === 'single'">
+                    <button
+                      v-for="customer in displayCustomers"
+                      :key="customer.id"
+                      type="button"
+                      class="customer-item customer-item--button"
+                      :class="{ disabled: customer.status === '生效' }"
+                      @click="handleSingleSelect(customer)"
+                    >
+                      <div class="customer-main">
+                        <div class="customer-name">{{ customer.name }}</div>
+                        <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+                      </div>
+                      <div class="customer-side">
+                        <van-tag plain :color="statusColor(customer.status)">{{ customer.status }}</van-tag>
+                        <div v-if="customer.hasInProcess" class="task-tip">在途：{{ customer.processId }}</div>
+                      </div>
+                    </button>
+                  </template>
+
+                  <template v-else>
+                    <van-checkbox-group v-model="batchSelectedIds">
+                      <div
+                        v-for="customer in displayCustomers"
+                        :key="customer.id"
+                        class="customer-item customer-item--check"
+                        :class="{ disabled: customer.status === '生效' }"
+                        @click="toggleBatchSelection(customer)"
+                      >
+                        <van-checkbox :name="customer.id" @click.stop />
+                        <div class="customer-main">
+                          <div class="customer-name">{{ customer.name }}</div>
+                          <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+                        </div>
+                        <div class="customer-side">
+                          <van-tag plain :color="statusColor(customer.status)">{{ customer.status }}</van-tag>
+                          <div v-if="customer.hasInProcess" class="task-tip">在途：{{ customer.processId }}</div>
+                        </div>
+                      </div>
+                    </van-checkbox-group>
+                  </template>
+                </div>
+              </template>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">申请信息</div>
+              <van-cell title="拟申请状态" value="生效（锁定）" />
+              <van-field
+                v-model.trim="opinion"
+                type="textarea"
+                rows="4"
+                maxlength="200"
+                show-word-limit
+                label="意见详情"
+                placeholder="请输入意见详情（最多200字）"
+              />
+              <div v-if="activeTab === 'single'" class="selected-tip">
+                已选客户：{{ selectedSingleCustomer ? selectedSingleCustomer.name : '未选择' }}
+              </div>
+              <div v-else class="selected-tip">已选客户：{{ batchSelectedIds.length }} 户</div>
+            </section>
+          </div>
+        </van-tab>
+
+        <van-tab title="准入失效" name="invalidate">
+          <div class="tab-content">
+            <section class="panel">
+              <div class="panel-title">已准入客户列表</div>
+              <van-search
+                v-model.trim="invalidateKeyword"
+                shape="round"
+                placeholder="搜索已准入客户"
+                class="search-box"
+                @search="refreshInvalidateList"
+                @clear="refreshInvalidateList"
+              />
+              
+              <div v-if="loadingInvalidate" class="empty-tip">加载中...</div>
+              <template v-else>
+                <div v-if="invalidateList.length === 0" class="empty-wrap">
+                  <div class="empty-tip">暂无已准入客户</div>
+                </div>
+                <div v-else class="customer-list">
+                  <button
+                    v-for="customer in invalidateList"
+                    :key="customer.id"
+                    type="button"
+                    class="customer-item customer-item--button"
+                    :class="{ active: selectedInvalidateId === customer.id }"
+                    @click="handleSelectInvalidate(customer)"
+                  >
+                    <div class="customer-main">
+                      <div class="customer-name">{{ customer.name }}</div>
+                      <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+                    </div>
+                    <div class="customer-side">
+                      <van-tag type="success">生效</van-tag>
+                    </div>
+                  </button>
+                </div>
+              </template>
+            </section>
+
+            <section class="panel" v-if="selectedInvalidateId">
+              <div class="panel-title">失效处理</div>
+              <van-cell title="选定客户" :value="selectedInvalidateCustomer?.name" />
+              <van-field
+                v-model.trim="invalidateReason"
+                type="textarea"
+                rows="3"
+                required
+                label="失效原因"
+                placeholder="请详细说明废止准入的原因（必填）"
+              />
+            </section>
+          </div>
+        </van-tab>
+      </van-tabs>
     </main>
 
     <footer class="page-footer">
       <van-button
+        v-if="mainTab === 'apply'"
         type="primary"
         block
         round
@@ -122,6 +183,19 @@
         @click="submitApply"
       >
         提交准入申请
+      </van-button>
+      <van-button
+        v-else
+        type="danger"
+        block
+        round
+        class="submit-btn danger-btn"
+        :loading="submittingInvalidate"
+        :disabled="!selectedInvalidateId"
+        loading-text="处理中..."
+        @click="submitInvalidate"
+      >
+        提交失效申请
       </van-button>
     </footer>
 
@@ -136,14 +210,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { showConfirmDialog, showDialog, showFailToast, showLoadingToast, showSuccessToast, showToast } from 'vant';
 import { useRouter } from 'vue-router';
-import { searchCustomers } from '../api/loan';
+import { searchCustomers, invalidateCustomer } from '../api/loan';
 
 const router = useRouter();
 const ALLOWED_STATUS = ['未纳入', '失效'];
 
+const mainTab = ref('apply');
 const activeTab = ref('single');
 const searchKeyword = ref('');
 const selectedStatus = ref('');
@@ -155,6 +230,14 @@ const opinion = ref('');
 const customerOptions = ref([]);
 const selectedSingleId = ref('');
 const batchSelectedIds = ref([]);
+
+// 准入失效相关状态
+const invalidateKeyword = ref('');
+const invalidateList = ref([]);
+const loadingInvalidate = ref(false);
+const selectedInvalidateId = ref('');
+const invalidateReason = ref('');
+const submittingInvalidate = ref(false);
 
 const statusOptions = [
   { text: '全部状态', value: '' },
@@ -180,6 +263,10 @@ const displayCustomers = computed(() => customerOptions.value);
 
 const selectedSingleCustomer = computed(() => {
   return customerOptions.value.find((item) => item.id === selectedSingleId.value) || null;
+});
+
+const selectedInvalidateCustomer = computed(() => {
+  return invalidateList.value.find((item) => item.id === selectedInvalidateId.value) || null;
 });
 
 function goBack() {
@@ -223,6 +310,25 @@ async function refreshCustomers() {
     showFailToast(error?.message || '客户搜索失败');
   } finally {
     searching.value = false;
+  }
+}
+
+async function refreshInvalidateList() {
+  loadingInvalidate.value = true;
+  try {
+    // 强制只查询“生效”的客户
+    const data = await searchCustomers(invalidateKeyword.value, '生效');
+    invalidateList.value = Array.isArray(data?.list) ? data.list : [];
+    
+    // 如果当前选中的客户不在新列表中，清空选择
+    if (selectedInvalidateId.value && !invalidateList.value.some((item) => item.id === selectedInvalidateId.value)) {
+      selectedInvalidateId.value = '';
+      invalidateReason.value = '';
+    }
+  } catch (error) {
+    showFailToast(error?.message || '已准入客户加载失败');
+  } finally {
+    loadingInvalidate.value = false;
   }
 }
 
@@ -290,6 +396,12 @@ async function toggleBatchSelection(customer) {
   }
 
   batchSelectedIds.value = [...batchSelectedIds.value, customer.id];
+}
+
+function handleSelectInvalidate(customer) {
+  if (selectedInvalidateId.value === customer.id) return;
+  selectedInvalidateId.value = customer.id;
+  invalidateReason.value = ''; // 切换客户时重置原因
 }
 
 function validateOpinion() {
@@ -370,6 +482,54 @@ function submitApply() {
   }
   submitBatchApply();
 }
+
+async function submitInvalidate() {
+  if (!selectedInvalidateId.value) {
+    showFailToast('请先选择要失效的客户');
+    return;
+  }
+  if (!invalidateReason.value) {
+    showFailToast('请填写失效原因');
+    return;
+  }
+
+  try {
+    await showConfirmDialog({
+      title: '高风险操作确认',
+      message: '确定要废止该机构的准入资格吗？此操作将导致该机构所有在途授信业务被自动冻结。',
+      confirmButtonText: '确定废止',
+      confirmButtonColor: '#d9534f',
+      cancelButtonText: '取消'
+    });
+
+    const loading = showLoadingToast({ message: '处理中...', duration: 0, forbidClick: true });
+    submittingInvalidate.value = true;
+    
+    try {
+      await invalidateCustomer(selectedInvalidateId.value, invalidateReason.value);
+      showSuccessToast('准入资格已废止');
+      // 刷新列表
+      refreshInvalidateList();
+      selectedInvalidateId.value = '';
+      invalidateReason.value = '';
+    } catch (error) {
+      showFailToast(error?.message || '操作失败');
+    } finally {
+      loading.close();
+      submittingInvalidate.value = false;
+    }
+  } catch {
+    // canceled
+  }
+}
+
+watch(mainTab, (val) => {
+  if (val === 'invalidate') {
+    refreshInvalidateList();
+  } else {
+    refreshCustomers();
+  }
+});
 
 onMounted(() => {
   refreshCustomers();
@@ -501,6 +661,11 @@ onMounted(() => {
   opacity: 0.65;
 }
 
+.customer-item.active {
+  border-color: #0f766e;
+  background: rgba(15, 118, 110, 0.08);
+}
+
 .customer-main {
   flex: 1;
   min-width: 0;
@@ -550,6 +715,11 @@ onMounted(() => {
   border: 0;
   background: linear-gradient(135deg, #0f766e 0%, #0b625b 100%);
   box-shadow: 0 8px 16px rgba(15, 118, 110, 0.24);
+}
+
+.danger-btn {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  box-shadow: 0 8px 16px rgba(239, 68, 68, 0.24);
 }
 
 :deep(.van-tabs__line) {
