@@ -468,6 +468,18 @@ async function handleSearchCustomer() {
       showFailToast('未查询到客户');
       return;
     }
+    
+    // Directive 2: Implement "Admission Status" validation
+    if (customer.status !== '生效') {
+      showConfirmDialog({
+        title: '准入拦截',
+        message: `机构“${customer.name}”当前状态为【${customer.status}】，尚未完成准入审批，暂无法发起授信申请。`,
+        confirmButtonText: '知道了',
+        showCancelButton: false
+      });
+      return;
+    }
+
     fillCustomer(customer);
     showSuccessToast('客户信息已加载');
   } catch (error) {

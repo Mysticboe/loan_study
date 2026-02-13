@@ -60,7 +60,7 @@ const currentRole = ref(localStorage.getItem('user_role') || 'APPLICANT');
 
 const showTabbar = computed(() => {
   // Hide tabbar on login, detail pages, etc.
-  const hiddenRoutes = ['Login', 'ApplyDetail', 'ApprovalDetail', 'Result', 'WhitelistApply'];
+  const hiddenRoutes = ['Login', 'ApplyDetail', 'ApprovalDetail', 'Result', 'WhitelistApply', 'WhitelistApprovalDetail'];
   return !hiddenRoutes.includes(route.name);
 });
 

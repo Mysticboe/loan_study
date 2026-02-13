@@ -151,7 +151,10 @@ const ensureSeedData = () => {
            invest: 0.05
          },
          assignee: 'u-admin', // Assign to current user
-         applicantId: 'li-jianguo' // Assume Li submitted these
+         applicantId: 'li-jianguo', // Assume Li submitted these
+         auditHistory: [
+            { stage: '提交申请', operator: '李建国', time: new Date(Date.now() - idx * 3600000).toISOString(), status: 'success', comment: '发起授信申请' }
+         ]
        };
     }
 
@@ -170,7 +173,10 @@ const ensureSeedData = () => {
          type: 'WHITELIST',
          creditRating: 'AA',
          assignee: 'u-admin',
-         applicantId: 'li-jianguo'
+         applicantId: 'li-jianguo',
+         auditHistory: [
+            { stage: '提交申请', operator: '李建国', time: new Date().toISOString(), status: 'success', comment: '发起准入申请' }
+         ]
        };
     }
 
@@ -189,7 +195,10 @@ const ensureSeedData = () => {
       timeline: buildTimeline(status.key),
       type: 'CREDIT',
       createdAt: new Date(Date.now() - idx * 3600000).toISOString(),
-      applicantId: 'li-jianguo' // Default to Li
+      applicantId: 'li-jianguo', // Default to Li
+      auditHistory: [
+         { stage: '提交申请', operator: '李建国', time: new Date(Date.now() - idx * 3600000).toISOString(), status: 'success', comment: '发起授信申请' }
+      ]
     };
   });
 
@@ -317,11 +326,34 @@ const customersData = [
   }
 ];
 
+const approvalDictionary = {
+  returnReasons: [
+    { text: '材料不齐', value: 'R001' },
+    { text: '行业投向不符', value: 'R002' },
+    { text: '额度切分逻辑错误', value: 'R003' },
+    { text: '风险缓释措施不足', value: 'R004' },
+    { text: '其他', value: 'R999' }
+  ],
+  commonComments: [
+    { text: '拟同意，请落实增信措施', value: 'C001' },
+    { text: '建议加强贷后监控', value: 'C002' },
+    { text: '同意报送', value: 'C003' },
+    { text: '该机构信用良好，授信额度符合我行同业限额管理规定，拟同意。', value: 'C004' }
+  ]
+};
+
 export const mockRequest = async ({ method, path, body, headers }) => {
   ensureSeedData();
   await sleep(rand(260, 620));
 
   const cleanPath = parsePath(path);
+
+  if (method === 'GET' && cleanPath === '/api/dict/approval-comments') {
+     const query = new URLSearchParams(path.split('?')[1] || '');
+     const type = query.get('type');
+     if (type === 'return') return approvalDictionary.returnReasons;
+     return approvalDictionary.commonComments;
+  }
 
   if (method === 'GET' && cleanPath === '/api/auth/captcha') {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -399,6 +431,47 @@ export const mockRequest = async ({ method, path, body, headers }) => {
 
   if (method === 'POST' && cleanPath === '/api/loan/applications') {
     const payload = body || {};
+    if (payload.type === 'WHITELIST' || payload.type === 'WHITELIST_REVOKE') {
+        const isRevoke = payload.type === 'WHITELIST_REVOKE';
+        const applicationId = makeId(isRevoke ? 'APP_WL_REVOKE_' : 'APP_WL_');
+        const row = {
+            applicationId,
+            approvalNo: `APR${Date.now().toString().slice(-10)}`,
+            applicantName: payload.customerName, // For revoke, this might be passed or derived
+            customerId: payload.idCard || payload.customerId, // Should support both
+            approvedAmount: '-',
+            amountValue: 0,
+            status: 'reviewing',
+            statusText: isRevoke ? '失效审批中' : '准入审批中',
+            activeStep: 1,
+            timeline: buildTimeline('reviewing'),
+            type: payload.type,
+            creditRating: payload.targetCreditLevel || 'AA',
+            applyReason: payload.applyReason,
+            createdAt: new Date().toISOString(),
+            assignee: 'u-admin', 
+            applicantId: 'li-jianguo',
+            auditHistory: [
+               { stage: '提交申请', operator: '李建国', time: new Date().toISOString(), status: 'success', comment: isRevoke ? '发起失效申请' : '发起准入申请' }
+            ]
+        };
+        // For revoke, ensure we get name if only ID provided
+        if (isRevoke && !row.applicantName && row.customerId) {
+           const c = customersData.find(x => x.id === row.customerId);
+           if (c) row.applicantName = c.name;
+        }
+
+        const rows = readApplications();
+        rows.unshift(row);
+        writeApplications(rows);
+        
+        return {
+            applicationId,
+            approvalNo: row.approvalNo,
+            status: row.status
+        };
+    }
+
     if (!payload.customerName || !payload.idCard || (!payload.collateralValue && !payload.amount)) {
       throw jsonError(400, '\u7533\u8bf7\u4fe1\u606f\u4e0d\u5b8c\u6574');
     }
@@ -413,13 +486,20 @@ export const mockRequest = async ({ method, path, body, headers }) => {
       applicationId,
       approvalNo: `APR${Date.now().toString().slice(-10)}`,
       applicantName: payload.customerName,
+      customerId: payload.idCard, // Store Customer ID for linkage
       approvedAmount: amountText(amount),
       amountValue: amount,
       status: status.key,
       statusText: status.text,
       activeStep: status.step,
       timeline: buildTimeline(status.key),
-      createdAt: new Date().toISOString()
+      type: 'LOAN', // Explicitly set type for credit application
+      createdAt: new Date().toISOString(),
+      assignee: 'u-admin', // Auto-assign to approver
+      applicantId: 'li-jianguo', // Default to Li
+      auditHistory: [
+         { stage: '提交申请', operator: '李建国', time: new Date().toISOString(), status: 'success', comment: '发起授信申请' }
+      ]
     };
 
     const rows = readApplications();
@@ -560,30 +640,43 @@ export const mockRequest = async ({ method, path, body, headers }) => {
        if (row.type === 'WHITELIST') {
           row.statusText = '已准入';
           // Find customer and update status
-          // In a real app, this would be linked by ID. Here we assume we just update the customer list mock too?
-          // Or we just update the application status.
-          // Let's also update the customer data if possible.
-          // Since we don't have a direct link in this mock structure easily without more complex data,
-          // We will just update the application status text.
-          // But requirement says: "Update Mock status to '生效'".
-          // Let's assume there is a matching customer in `customersData`.
-          const customer = customersData.find(c => c.name === row.applicantName);
-          if (customer) customer.status = '生效';
+          const customer = customersData.find(c => c.id === row.customerId || c.name === row.applicantName);
+          if (customer) {
+             customer.status = '生效';
+             customer.hasValidQuota = true; // Also enable quota flag
+          }
+       } else if (row.type === 'WHITELIST_REVOKE') {
+          row.statusText = '已失效';
+          // Find customer and update status to Invalid
+          const customer = customersData.find(c => c.id === row.customerId || c.name === row.applicantName);
+          if (customer) {
+             customer.status = '失效';
+             customer.hasValidQuota = false;
+             // Clear Quota
+             if (customer.previousQuota) {
+                customer.previousQuota.totalExposure = 0;
+                customer.previousQuota.selfRunExposure = 0;
+                customer.previousQuota.assetManageExposure = 0;
+             }
+          }
        } else {
           row.statusText = '已放款';
        }
        row.activeStep = 3;
        row.timeline.push({ title: '审批通过', time: new Date().toISOString() });
+       row.auditHistory.push({ stage: '风险审批', operator: '张总', time: new Date().toISOString(), status: 'success', comment: '审批通过' });
     } else if (action === 'reject') {
        row.status = 'rejected';
        row.statusText = row.type === 'WHITELIST' ? '准入拒绝' : '已拒绝';
        row.timeline.push({ title: '审批拒绝', time: new Date().toISOString() });
+       row.auditHistory.push({ stage: '风险审批', operator: '张总', time: new Date().toISOString(), status: 'error', comment: reason || '拒绝' });
     } else if (action === 'return') {
        row.status = 'returned'; // New status for return
        row.statusText = '已退回';
        row.returnReason = reason; // Store reason
        row.activeStep = 0; // Reset step
        row.timeline.push({ title: '退回补充材料', time: new Date().toISOString() });
+       row.auditHistory.push({ stage: '风险审批', operator: '张总', time: new Date().toISOString(), status: 'warning', comment: reason || '退回' });
     }
     
     writeApplications(rows);

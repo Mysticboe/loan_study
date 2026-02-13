@@ -108,19 +108,13 @@
         <div class="panel-header">
           <span class="title">流转历史</span>
         </div>
-        <van-steps direction="vertical" :active="2" active-color="#0f766e">
-          <van-step>
-            <h3>客户经理提交</h3>
-            <p>{{ formatDate(new Date(Date.now() - 86400000 * 2)) }}</p>
-          </van-step>
-          <van-step>
-            <h3>部门负责人初审</h3>
-            <p>意见：同意报送，建议关注集团集中度。</p>
-            <p>{{ formatDate(new Date(Date.now() - 86400000)) }}</p>
-          </van-step>
-          <van-step>
-            <h3>风险审批官审批</h3>
-            <p>当前环节</p>
+        <van-steps direction="vertical" :active="detail.auditHistory?.length || 0" active-color="#0f766e">
+           <van-step v-for="(log, index) in detail.auditHistory" :key="index">
+            <h3>{{ log.stage }} <span class="operator">({{ log.operator }})</span></h3>
+            <p v-if="log.comment" :class="{'error-text': log.status === 'error', 'warn-text': log.status === 'warning'}">
+              {{ log.comment }}
+            </p>
+            <p class="time">{{ new Date(log.time).toLocaleString() }}</p>
           </van-step>
         </van-steps>
       </section>
@@ -133,19 +127,57 @@
     <!-- 审批决策操作栏 (破) -->
     <van-action-bar v-if="detail && detail.status === 'reviewing'">
       <van-action-bar-button type="danger" text="拒绝" @click="handleReject" />
-      <van-action-bar-button type="warning" text="退回" @click="showReturnSheet = true" />
+      <van-action-bar-button type="warning" text="退回" @click="handleReturn" />
       <van-action-bar-button type="primary" text="通过" color="#0f766e" @click="handleApprove" />
     </van-action-bar>
 
-    <!-- 退回原因选择 -->
-    <van-action-sheet
-      v-model:show="showReturnSheet"
-      :actions="returnActions"
-      cancel-text="取消"
-      description="请选择退回原因"
-      close-on-click-action
-      @select="confirmReturn"
-    />
+    <!-- 退回处理弹窗 (破) -->
+    <van-popup v-model:show="showReturnSheet" position="bottom" round style="height: 60%">
+      <div class="popup-header">
+         <span>退回审批</span>
+         <span class="close-btn" @click="showReturnSheet = false">取消</span>
+      </div>
+      <div class="popup-content">
+         <van-field
+            v-model="form.returnReasonText"
+            is-link
+            readonly
+            label="退回原因"
+            placeholder="请选择"
+            @click="showReasonPicker = true"
+         />
+         <van-field
+            v-model="form.comment"
+            rows="3"
+            autosize
+            label="补充意见"
+            type="textarea"
+            placeholder="请输入具体修改建议..."
+         />
+         <div class="action-btn-area">
+            <van-button block type="primary" :disabled="!form.returnReasonText" @click="submitReturn">确认退回</van-button>
+         </div>
+      </div>
+      <van-popup v-model:show="showReasonPicker" position="bottom" round>
+         <van-picker
+           :columns="returnReasons"
+           @confirm="onConfirmReason"
+           @cancel="showReasonPicker = false"
+         />
+      </van-popup>
+    </van-popup>
+
+    <!-- 拒绝弹窗 -->
+    <van-dialog v-model:show="showRejectDialog" title="拒绝申请" show-cancel-button @confirm="submitReject">
+       <van-field
+         v-model="form.rejectReason"
+         rows="3"
+         autosize
+         type="textarea"
+         placeholder="请输入拒绝理由..."
+         class="reject-input"
+       />
+    </van-dialog>
   </div>
 </template>
 
@@ -154,20 +186,41 @@ import { onMounted, ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showConfirmDialog, showDialog, showSuccessToast, showLoadingToast, showFailToast } from 'vant';
 import { fetchLoanApplicationDetail, submitApprovalDecision } from '../api/loan';
+import { request } from '../api/http';
 import AppSkeleton from '../components/AppSkeleton.vue';
 
 const route = useRoute();
 const router = useRouter();
 const detail = ref(null);
 const showReturnSheet = ref(false);
+const showRejectDialog = ref(false);
 const submitting = ref(false);
 
-const returnActions = [
-  { name: '产品树选择错误' },
-  { name: '证明材料缺失' },
-  { name: '额度测算依据不足' },
-  { name: '其他' }
-];
+const returnReasons = ref([]);
+const commonComments = ref([]);
+
+const form = ref({
+  returnReason: '',
+  returnReasonText: '',
+  rejectReason: '',
+  comment: ''
+});
+const showReasonPicker = ref(false);
+
+const loadDicts = async () => {
+  try {
+     const reasons = await request({ method: 'GET', path: '/api/dict/approval-comments', query: { type: 'return' } });
+     returnReasons.value = reasons;
+     const comments = await request({ method: 'GET', path: '/api/dict/approval-comments', query: { type: 'common' } });
+     commonComments.value = comments;
+  } catch (e) { console.error(e); }
+};
+
+const onConfirmReason = ({ selectedOptions }) => {
+  form.value.returnReasonText = selectedOptions[0]?.text;
+  form.value.returnReason = selectedOptions[0]?.text;
+  showReasonPicker.value = false;
+};
 
 const logicError = computed(() => {
    if (!detail.value || !detail.value.quotaBreakdown) return '';
@@ -211,6 +264,15 @@ const loadDetail = async () => {
 };
 
 const handleApprove = () => {
+  // Smart Comment
+  if (!form.value.comment) {
+     if (detail.value?.creditRating === 'AAA') {
+        form.value.comment = '该机构信用良好，授信额度符合我行同业限额管理规定，拟同意。';
+     } else {
+        form.value.comment = '拟同意，请落实相关风险缓释措施。';
+     }
+  }
+
   if (logicError.value) {
      showConfirmDialog({
        title: '风险提示',
@@ -225,7 +287,7 @@ const handleApprove = () => {
 const processApprove = () => {
   showConfirmDialog({
     title: '审批通过确认',
-    message: '确认批准该笔授信申请？\n(模拟) 请使用数字证书签名',
+    message: `确认批准该笔授信申请？\n\n审批意见：${form.value.comment}\n(模拟) 请使用数字证书签名`,
     confirmButtonText: '确认签名',
     confirmButtonColor: '#0f766e'
   }).then(async () => {
@@ -234,7 +296,8 @@ const processApprove = () => {
       await new Promise(r => setTimeout(r, 800)); // Signature delay
       await submitApprovalDecision({
         applicationId: detail.value.applicationId,
-        action: 'approve'
+        action: 'approve',
+        reason: form.value.comment // Send comment as reason if needed or extend API
       });
       loading.close();
       showSuccessToast('审批已通过');
@@ -247,46 +310,47 @@ const processApprove = () => {
 };
 
 const handleReject = () => {
-  showDialog({
-    title: '拒绝申请',
-    message: '请输入详细拒绝理由：',
-    showCancelButton: true,
-    confirmButtonColor: '#ee0a24',
-    confirmButtonText: '确认拒绝',
-    teleport: 'body',
-    messageAlign: 'left',
-    // Vant 4 Dialog input workaround or usage of component slots is better, 
-    // but for simple text, standard confirm is used. 
-    // In real scenario, we'd use a custom component inside the dialog or a form.
-    // For this demo, we assume the user "mentally" inputs it or we use a prompt if available.
-    // Vant 4 doesn't support 'prompt' style out of box easily without component.
-    // We will just simulate the confirmation action.
-  }).then(async () => {
-     try {
-       await submitApprovalDecision({
-         applicationId: detail.value.applicationId,
-         action: 'reject',
-         reason: '综合评分不足' // Mock reason
-       });
-       showSuccessToast('已拒绝该申请');
-       router.back();
-     } catch (error) {
-       showFailToast(error.message || '操作失败');
-     }
-  });
+  showRejectDialog.value = true;
 };
 
-const confirmReturn = async (action) => {
-  showReturnSheet.value = false;
+const submitReject = async () => {
+  if (!form.value.rejectReason) {
+     showFailToast('请输入拒绝理由');
+     return;
+  }
+  try {
+     await submitApprovalDecision({
+       applicationId: detail.value.applicationId,
+       action: 'reject',
+       reason: form.value.rejectReason
+     });
+     showSuccessToast('已拒绝该申请');
+     router.back();
+   } catch (error) {
+     showFailToast(error.message || '操作失败');
+   }
+};
+
+const handleReturn = () => {
+  showReturnSheet.value = true;
+};
+
+const submitReturn = async () => {
+  if (!form.value.returnReason) {
+    showFailToast('请选择退回原因');
+    return;
+  }
+  const fullReason = `${form.value.returnReason} ${form.value.comment ? ' - ' + form.value.comment : ''}`;
+  
   const loading = showLoadingToast({ message: '退回中...', duration: 0 });
   try {
      await submitApprovalDecision({
        applicationId: detail.value.applicationId,
        action: 'return',
-       reason: action.name
+       reason: fullReason
      });
      loading.close();
-     showSuccessToast(`已退回：${action.name}`);
+     showSuccessToast('已退回');
      router.back();
   } catch (error) {
      loading.close();
@@ -296,6 +360,7 @@ const confirmReturn = async (action) => {
 
 onMounted(() => {
   loadDetail();
+  loadDicts();
 });
 </script>
 
@@ -392,7 +457,60 @@ onMounted(() => {
   border-radius: 4px;
 }
 
+.operator {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: normal;
+}
+
+.time {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.error-text {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.warn-text {
+  color: #f59e0b;
+  font-weight: 500;
+}
+
 .bottom-spacer {
   height: 60px;
+}
+
+.popup-header {
+  padding: 16px;
+  text-align: center;
+  font-weight: 600;
+  border-bottom: 1px solid #eee;
+  position: relative;
+}
+
+.close-btn {
+  position: absolute;
+  right: 16px;
+  color: #969799;
+  font-weight: normal;
+  font-size: 14px;
+}
+
+.popup-content {
+  padding: 16px 0;
+}
+
+.action-btn-area {
+  padding: 20px 16px;
+}
+
+.reject-input {
+  background: #f7f8fa;
+  margin: 10px 16px;
+  width: auto;
+  border-radius: 4px;
 }
 </style>
