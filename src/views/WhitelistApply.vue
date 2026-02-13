@@ -1,5 +1,5 @@
 <template>
-  <div class="whitelist-page">
+  <div class="whitelist-page" :class="{ 'page-invalid': mainTab === 'invalidate' }">
     <van-nav-bar
       title="同业准入申请"
       left-text="返回"
@@ -10,7 +10,15 @@
     />
 
     <main class="page-content">
-      <van-tabs v-model:active="mainTab" sticky animated swipeable color="#0f766e" class="main-tabs">
+      <van-tabs
+        v-model:active="mainTab"
+        sticky
+        animated
+        swipeable
+        offset-top="46"
+        color="#0f766e"
+        class="main-tabs"
+      >
         <van-tab title="准入申请" name="apply">
           <div class="tab-content">
             <section class="panel">
@@ -61,11 +69,10 @@
                     >
                       <div class="customer-main">
                         <div class="customer-name">{{ customer.name }}</div>
-                        <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+                        <div class="customer-no">编号：{{ customer.id }}</div>
                       </div>
                       <div class="customer-side">
                         <van-tag plain :color="statusColor(customer.status)">{{ customer.status }}</van-tag>
-                        <div v-if="customer.hasInProcess" class="task-tip">在途：{{ customer.processId }}</div>
                       </div>
                     </button>
                   </template>
@@ -82,11 +89,10 @@
                         <van-checkbox :name="customer.id" @click.stop />
                         <div class="customer-main">
                           <div class="customer-name">{{ customer.name }}</div>
-                          <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+                          <div class="customer-no">编号：{{ customer.id }}</div>
                         </div>
                         <div class="customer-side">
                           <van-tag plain :color="statusColor(customer.status)">{{ customer.status }}</van-tag>
-                          <div v-if="customer.hasInProcess" class="task-tip">在途：{{ customer.processId }}</div>
                         </div>
                       </div>
                     </van-checkbox-group>
@@ -144,7 +150,7 @@
                   >
                     <div class="customer-main">
                       <div class="customer-name">{{ customer.name }}</div>
-                      <div class="customer-no">编号：{{ customer.id }} · {{ customer.type }}</div>
+                      <div class="customer-no">编号：{{ customer.id }}</div>
                     </div>
                     <div class="customer-side">
                       <van-tag type="success">生效</van-tag>
@@ -430,6 +436,8 @@ function validateBatchSelection(customers) {
   return { valid: true, message: '' };
 }
 
+import { createLoanApplication } from '../api/loan';
+
 async function submitSingleApply() {
   if (!selectedSingleCustomer.value) {
     showFailToast('请先选择客户');
@@ -440,9 +448,23 @@ async function submitSingleApply() {
   const loading = showLoadingToast({ message: '提交中...', duration: 0, forbidClick: true });
   submitting.value = true;
   try {
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-    showSuccessToast('准入申请提交成功');
-    router.replace('/workbench');
+    // 守：重塑准入申请的「提交态」
+    // 使用 createLoanApplication 提交，type: 'WHITELIST'
+    await createLoanApplication({
+       customerName: selectedSingleCustomer.value.name,
+       idCard: selectedSingleCustomer.value.id, // Using ID as identifier
+       amount: 0, // No amount for whitelist
+       idCardFileIds: ['mock_file_id'], // Mock file
+       applyReason: opinion.value,
+       type: 'WHITELIST',
+       targetCreditLevel: 'AA' // Mock level
+    });
+    
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    showSuccessToast('准入申请已提交，请等待风险管理部审批');
+    router.replace('/progress');
+  } catch (error) {
+    showFailToast(error.message || '提交失败');
   } finally {
     loading.close();
     submitting.value = false;
@@ -466,9 +488,25 @@ async function submitBatchApply() {
   const loading = showLoadingToast({ message: '提交中...', duration: 0, forbidClick: true });
   submitting.value = true;
   try {
-    await new Promise((resolve) => setTimeout(resolve, 1300));
-    showSuccessToast(`批量准入申请提交成功（${selectedRows.length}户）`);
-    router.replace('/workbench');
+    // Batch submission simulation - create one by one or batch API if exists
+    // For now loop create
+    for (const customer of selectedRows) {
+        await createLoanApplication({
+           customerName: customer.name,
+           idCard: customer.id,
+           amount: 0,
+           idCardFileIds: ['mock_file_id'],
+           applyReason: opinion.value,
+           type: 'WHITELIST',
+           targetCreditLevel: 'AA'
+        });
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    showSuccessToast(`批量准入申请已提交（${selectedRows.length}户），请等待审批`);
+    router.replace('/progress');
+  } catch (error) {
+    showFailToast(error.message || '提交失败');
   } finally {
     loading.close();
     submitting.value = false;
@@ -525,9 +563,17 @@ async function submitInvalidate() {
 
 watch(mainTab, (val) => {
   if (val === 'invalidate') {
+    // 切换到失效页：清空失效页的搜索和状态，并刷新
+    invalidateKeyword.value = '';
+    selectedInvalidateId.value = '';
+    invalidateReason.value = '';
     refreshInvalidateList();
   } else {
-    refreshCustomers();
+    // 切换回申请页：保持状态 (Keep-alive)
+    // 仅当列表为空且未在搜索时才刷新（例如首次进入或被清除后）
+    if (customerOptions.value.length === 0 && !searching.value) {
+      refreshCustomers();
+    }
   }
 });
 
@@ -549,6 +595,12 @@ onMounted(() => {
   position: relative;
   z-index: 1;
   padding-bottom: 84px;
+  background-color: #f7f8fa;
+  transition: background 0.3s ease;
+}
+
+.whitelist-page.page-invalid {
+  background: linear-gradient(180deg, #f8f8f8 0%, #f2f3f5 100%);
 }
 
 .page-nav {

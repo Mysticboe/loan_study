@@ -12,12 +12,33 @@
       <span class="gesture-arrow">{{ indicatorSide === 'left' ? '<' : '>' }}</span>
     </div>
   </div>
+  
+  <!-- Global Tabbar (离) -->
+  <van-tabbar v-if="showTabbar" v-model="activeTab" route fixed placeholder safe-area-inset-bottom>
+    <van-tabbar-item 
+      v-for="tab in currentTabs" 
+      :key="tab.name" 
+      :name="tab.name" 
+      :to="tab.to" 
+      :icon="tab.icon"
+    >
+      {{ tab.title }}
+    </van-tabbar-item>
+  </van-tabbar>
+
+  <!-- God Mode Switcher (Dev Only) -->
+  <div v-if="isDev" class="god-mode-switch" @click="toggleRole">
+    <van-icon :name="currentRole === 'APPROVER' ? 'manager-o' : 'user-o'" size="20" />
+    <span class="role-label">{{ currentRole === 'APPROVER' ? '审' : '申' }}</span>
+  </div>
+
   <Watermark />
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { showToast } from 'vant';
 import Watermark from './components/Watermark.vue';
 
 const EDGE_SIZE = 30;
@@ -31,6 +52,49 @@ const trackingEdge = ref(null);
 const indicatorVisible = ref(false);
 const indicatorProgress = ref(0);
 const listenerOptions = { passive: true };
+const activeTab = ref('workbench');
+
+// God Mode
+const isDev = import.meta.env.DEV; // Vite env
+const currentRole = ref(localStorage.getItem('user_role') || 'APPLICANT');
+
+const showTabbar = computed(() => {
+  // Hide tabbar on login, detail pages, etc.
+  const hiddenRoutes = ['Login', 'ApplyDetail', 'ApprovalDetail', 'Result', 'WhitelistApply'];
+  return !hiddenRoutes.includes(route.name);
+});
+
+const currentTabs = computed(() => {
+  if (currentRole.value === 'APPROVER') {
+    return [
+      { name: 'progress', title: '待办任务', icon: 'todo-list-o', to: '/progress' },
+      { name: 'mine', title: '我的', icon: 'user-o', to: '/mine' }
+    ];
+  }
+  return [
+    { name: 'workbench', title: '首页', icon: 'home-o', to: '/workbench' },
+    { name: 'apply', title: '申请', icon: 'add-o', to: '/apply' },
+    { name: 'progress', title: '进度', icon: 'apps-o', to: '/progress' },
+    { name: 'mine', title: '我的', icon: 'user-o', to: '/mine' }
+  ];
+});
+
+const toggleRole = () => {
+  const newRole = currentRole.value === 'APPLICANT' ? 'APPROVER' : 'APPLICANT';
+  currentRole.value = newRole;
+  localStorage.setItem('user_role', newRole);
+  
+  showToast(`已切换至：${newRole === 'APPROVER' ? '审批人' : '申请人'}`);
+  
+  // Force reload to apply guard logic or just redirect
+  if (newRole === 'APPROVER') {
+     router.replace('/progress');
+  } else {
+     router.replace('/workbench');
+  }
+  // Ideally, we should reload window to reset state completely, but router push is faster for dev
+  setTimeout(() => window.location.reload(), 500);
+};
 
 let startX = 0;
 let startY = 0;
@@ -193,5 +257,34 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.9);
   line-height: 1;
   font-weight: 700;
+}
+
+.god-mode-switch {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  width: 48px;
+  height: 48px;
+  background: rgba(31, 41, 55, 0.8);
+  backdrop-filter: blur(8px);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.god-mode-switch:active {
+  transform: scale(0.9);
+}
+
+.role-label {
+  font-size: 10px;
+  margin-top: 2px;
 }
 </style>
