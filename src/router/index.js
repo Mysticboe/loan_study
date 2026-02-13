@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import LoanApply from '../views/LoanApply.vue';
-import LoanApplyDetail from '../views/LoanApplyDetail.vue';
+import InterbankCreditApply from '../views/InterbankCreditApply.vue';
 import LoanResult from '../views/LoanResult.vue';
 import LoanProgress from '../views/LoanProgress.vue';
 import Login from '../views/Login.vue';
@@ -28,7 +28,7 @@ const routes = [
   {
     path: '/apply-detail',
     name: 'ApplyDetail',
-    component: LoanApplyDetail,
+    component: InterbankCreditApply,
     meta: { requiresAuth: true }
   },
   {

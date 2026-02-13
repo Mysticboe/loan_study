@@ -27,3 +27,17 @@ export const probeCreditRisk = (payload) =>
     path: '/api/risk/probe',
     body: payload
   });
+
+export const invalidateCustomer = (customerId, reason) =>
+  request({
+    method: 'POST',
+    path: '/api/customer/invalidate',
+    body: { customerId, reason }
+  });
+
+export const fetchLoanProducts = (category) =>
+  request({
+    method: 'GET',
+    path: '/api/loan/products',
+    query: { category }
+  });

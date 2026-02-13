@@ -1,4 +1,4 @@
-﻿const STORAGE_KEY = 'loan_study_mock_applications';
+const STORAGE_KEY = 'loan_study_mock_applications';
 
 const USERS = [{ id: 'u-admin', username: 'admin', password: 'admin', name: '\u7ba1\u7406\u5458' }];
 
@@ -123,6 +123,144 @@ const parseFormDataFiles = (formData) => {
 
 const pickStatus = () => statusDefs[rand(0, statusDefs.length - 1)];
 
+const productTree = {
+  bill: [
+    { text: '银票承兑', value: 'P001' },
+    { text: '银票贴现', value: 'P002' },
+    { text: '商票保贴', value: 'P003' }
+  ],
+  finance: [
+    { text: '同业拆借', value: 'F001' },
+    { text: '同业借款', value: 'F002' },
+    { text: '转贴现', value: 'F003' }
+  ],
+  invest: [
+    { text: '同业理财', value: 'I001' },
+    { text: '债券投资', value: 'I002' },
+    { text: '基金投资', value: 'I003' }
+  ]
+};
+
+const customersData = [
+  {
+    id: 'C001',
+    name: '中国建设银行',
+    status: '生效',
+    type: '银行金融机构',
+    hasInProcess: false,
+    hasValidQuota: true,
+    previousQuota: {
+      totalExposure: 3600000000,
+      selfRunExposure: 2500000000,
+      assetManageExposure: 1100000000
+    }
+  },
+  {
+    id: 'C002',
+    name: '招商证券',
+    status: '失效',
+    type: '非银行金融机构',
+    hasInProcess: false,
+    hasValidQuota: false,
+    previousQuota: {
+      totalExposure: 0,
+      selfRunExposure: 0,
+      assetManageExposure: 0
+    }
+  },
+  {
+    id: 'C003',
+    name: '兴业基金',
+    status: '未纳入',
+    type: '非银行金融机构',
+    hasInProcess: false,
+    hasValidQuota: false,
+    previousQuota: {
+      totalExposure: 0,
+      selfRunExposure: 0,
+      assetManageExposure: 0
+    }
+  },
+  {
+    id: 'C004',
+    name: '浦发银行',
+    status: '未纳入',
+    type: '银行金融机构',
+    hasInProcess: true,
+    processId: 'LC202602120001',
+    hasValidQuota: true,
+    previousQuota: {
+      totalExposure: 2100000000,
+      selfRunExposure: 1400000000,
+      assetManageExposure: 700000000
+    }
+  },
+  {
+    id: 'C005',
+    name: '李建国',
+    status: '生效',
+    type: '自然人',
+    customerType: 'INDIVIDUAL',
+    hasInProcess: false,
+    hasValidQuota: true,
+    existingLimit: 2000000,
+    creditRating: '',
+    previousQuota: {
+      totalExposure: 2000000,
+      selfRunExposure: 2000000,
+      assetManageExposure: 0
+    }
+  },
+  {
+    id: 'C006',
+    name: '东方商业银行总行',
+    status: '生效',
+    type: '银行金融机构',
+    customerType: 'INSTITUTION',
+    hasInProcess: false,
+    hasValidQuota: true,
+    existingLimit: 500000000,
+    creditRating: 'AAA',
+    previousQuota: {
+      totalExposure: 500000000,
+      selfRunExposure: 300000000,
+      assetManageExposure: 200000000
+    }
+  },
+  {
+    id: 'C007',
+    name: '南方证券股份有限公司',
+    status: '生效',
+    type: '非银行金融机构',
+    customerType: 'INSTITUTION',
+    hasInProcess: false,
+    hasValidQuota: false,
+    existingLimit: 0,
+    creditRating: 'AA+',
+    previousQuota: {
+      totalExposure: 0,
+      selfRunExposure: 0,
+      assetManageExposure: 0
+    }
+  },
+  {
+    id: 'C008',
+    name: '西部基金管理有限公司',
+    status: '生效',
+    type: '非银行金融机构',
+    customerType: 'INSTITUTION',
+    hasInProcess: false,
+    hasValidQuota: true,
+    existingLimit: 120000000,
+    creditRating: 'AA',
+    previousQuota: {
+      totalExposure: 120000000,
+      selfRunExposure: 80000000,
+      assetManageExposure: 40000000
+    }
+  }
+];
+
 export const mockRequest = async ({ method, path, body, headers }) => {
   ensureSeedData();
   await sleep(rand(260, 620));
@@ -175,14 +313,14 @@ export const mockRequest = async ({ method, path, body, headers }) => {
 
   if (method === 'POST' && cleanPath === '/api/loan/applications') {
     const payload = body || {};
-    if (!payload.customerName || !payload.idCard || !payload.collateralValue) {
+    if (!payload.customerName || !payload.idCard || (!payload.collateralValue && !payload.amount)) {
       throw jsonError(400, '\u7533\u8bf7\u4fe1\u606f\u4e0d\u5b8c\u6574');
     }
     if (!Array.isArray(payload.idCardFileIds) || payload.idCardFileIds.length === 0) {
       throw jsonError(400, '\u8bf7\u5148\u4e0a\u4f20\u8eab\u4efd\u8bc1\u5f71\u50cf');
     }
 
-    const amount = Number(payload.collateralValue) * 0.7;
+    const amount = payload.amount ? Number(payload.amount) : Number(payload.collateralValue) * 0.7;
     const status = pickStatus();
     const applicationId = makeId('APP_');
     const row = {
@@ -232,73 +370,57 @@ export const mockRequest = async ({ method, path, body, headers }) => {
     };
   }
 
+  if (method === 'GET' && cleanPath === '/api/loan/products') {
+    const query = new URLSearchParams(path.split('?')[1] || '');
+    const category = query.get('category');
+    return productTree[category] || [];
+  }
+
   if (method === 'GET' && cleanPath === '/api/customer/search') {
     const query = new URLSearchParams(path.split('?')[1] || '');
     const keyword = (query.get('keyword') || '').trim();
     const status = (query.get('status') || '').trim();
-    const customers = [
-      {
-        id: 'C001',
-        name: '中国建设银行',
-        status: '生效',
-        type: '银行金融机构',
-        hasInProcess: false,
-        hasValidQuota: true,
-        previousQuota: {
-          totalExposure: 3600000000,
-          selfRunExposure: 2500000000,
-          assetManageExposure: 1100000000
-        }
-      },
-      {
-        id: 'C002',
-        name: '招商证券',
-        status: '失效',
-        type: '非银行金融机构',
-        hasInProcess: false,
-        hasValidQuota: false,
-        previousQuota: {
-          totalExposure: 0,
-          selfRunExposure: 0,
-          assetManageExposure: 0
-        }
-      },
-      {
-        id: 'C003',
-        name: '兴业基金',
-        status: '未纳入',
-        type: '非银行金融机构',
-        hasInProcess: false,
-        hasValidQuota: false,
-        previousQuota: {
-          totalExposure: 0,
-          selfRunExposure: 0,
-          assetManageExposure: 0
-        }
-      },
-      {
-        id: 'C004',
-        name: '浦发银行',
-        status: '未纳入',
-        type: '银行金融机构',
-        hasInProcess: true,
-        processId: 'LC202602120001',
-        hasValidQuota: true,
-        previousQuota: {
-          totalExposure: 2100000000,
-          selfRunExposure: 1400000000,
-          assetManageExposure: 700000000
-        }
-      }
-    ];
-
-    const list = customers.filter((item) => {
+    
+    const list = customersData.filter((item) => {
       const keywordMatch = !keyword || item.name.includes(keyword) || item.id.includes(keyword);
       const statusMatch = !status || item.status === status;
       return keywordMatch && statusMatch;
     });
 
     return { list };
+  }
+
+  if (method === 'POST' && cleanPath === '/api/customer/invalidate') {
+    const payload = body || {};
+    const customerId = payload.customerId;
+    const reason = payload.reason;
+
+    if (!customerId) {
+      throw jsonError(400, '缺少客户ID');
+    }
+    if (!reason) {
+      throw jsonError(400, '必须填写失效原因');
+    }
+
+    const customer = customersData.find((c) => c.id === customerId);
+    if (!customer) {
+      throw jsonError(404, '未找到该客户');
+    }
+
+    if (customer.status === '失效') {
+      throw jsonError(400, '该客户已处于失效状态');
+    }
+
+    customer.status = '失效';
+    // 可以在这里添加一些日志或者副作用，比如冻结额度等
+    customer.previousQuota = {
+      totalExposure: 0,
+      selfRunExposure: 0,
+      assetManageExposure: 0
+    };
+    customer.hasValidQuota = false;
+
+    return { success: true, message: '客户准入已失效' };
   }
 
   if (method === 'POST' && cleanPath === '/api/risk/probe') {
