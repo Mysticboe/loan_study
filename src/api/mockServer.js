@@ -326,11 +326,34 @@ const customersData = [
   }
 ];
 
+const approvalDictionary = {
+  returnReasons: [
+    { text: '材料不齐', value: 'R001' },
+    { text: '行业投向不符', value: 'R002' },
+    { text: '额度切分逻辑错误', value: 'R003' },
+    { text: '风险缓释措施不足', value: 'R004' },
+    { text: '其他', value: 'R999' }
+  ],
+  commonComments: [
+    { text: '拟同意，请落实增信措施', value: 'C001' },
+    { text: '建议加强贷后监控', value: 'C002' },
+    { text: '同意报送', value: 'C003' },
+    { text: '该机构信用良好，授信额度符合我行同业限额管理规定，拟同意。', value: 'C004' }
+  ]
+};
+
 export const mockRequest = async ({ method, path, body, headers }) => {
   ensureSeedData();
   await sleep(rand(260, 620));
 
   const cleanPath = parsePath(path);
+
+  if (method === 'GET' && cleanPath === '/api/dict/approval-comments') {
+     const query = new URLSearchParams(path.split('?')[1] || '');
+     const type = query.get('type');
+     if (type === 'return') return approvalDictionary.returnReasons;
+     return approvalDictionary.commonComments;
+  }
 
   if (method === 'GET' && cleanPath === '/api/auth/captcha') {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
