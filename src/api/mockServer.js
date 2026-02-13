@@ -1,6 +1,25 @@
 const STORAGE_KEY = 'loan_study_mock_applications';
 
-const USERS = [{ id: 'u-admin', username: 'admin', password: 'admin', name: '\u7ba1\u7406\u5458' }];
+const USERS = [
+  { 
+    id: 'u-admin', 
+    username: 'admin', 
+    password: '123456', 
+    name: '张总',
+    dept: '风险管理部',
+    role: 'APPROVER',
+    avatar: 'https://fastly.jsdelivr.net/npm/@vant/assets/cat.jpeg'
+  },
+  {
+    id: 'u-applicant',
+    username: 'li-jianguo',
+    password: '123456', 
+    name: '李建国',
+    dept: '公司业务部',
+    role: 'APPLICANT',
+    avatar: 'https://fastly.jsdelivr.net/npm/@vant/assets/cat.jpeg'
+  }
+];
 
 const captchaStore = new Map();
 
@@ -90,8 +109,71 @@ const ensureSeedData = () => {
   if (existing.length > 0 && !hasBrokenRows(existing)) return;
 
   const names = ['\u674e\u5efa\u56fd', '\u738b\u6653\u4e91', '\u5f20\u6587\u6d9b', '\u8d75\u5b50\u6db5'];
-  const seeds = Array.from({ length: 8 }).map((_, i) => {
+  const institutions = [
+    { name: '中国建设银行', rating: 'AAA', limit: 3000000000 },
+    { name: '兴业基金', rating: 'AA+', limit: 1000000000 },
+    { name: '招商证券', rating: 'AA', limit: 500000000 }
+  ];
+
+  const seeds = Array.from({ length: 12 }).map((_, i) => {
     const idx = i + 1;
+    // Approver flow test data (last 4 items)
+    if (i >= 8) {
+       const inst = institutions[i % 3];
+       const isHighRisk = i === 9; // Make one item high risk
+       const amount = isHighRisk ? inst.limit + 100000000 : inst.limit * 0.8;
+       const status = i === 11 ? 'disbursed' : 'reviewing'; // One done, others todo
+       
+       return {
+         applicationId: `APP_APPR_${idx}`,
+         approvalNo: `APR2026${String(200000 + idx).slice(-6)}`,
+         applicantName: inst.name,
+         approvedAmount: amountText(amount),
+         amountValue: amount,
+         status: status,
+         statusText: STATUS_TEXT[status],
+         activeStep: status === 'disbursed' ? 3 : 2,
+         timeline: buildTimeline(status),
+         type: 'CREDIT', // Default type
+         // New fields for approver view
+         creditRating: inst.rating,
+         applyType: i % 2 === 0 ? '续作' : '新增',
+         groupExposure: isHighRisk ? 8000000000 : 2000000000, // For concentration warning
+         previousQuota: i % 2 === 0 ? {
+            bill: inst.limit * 0.5,
+            finance: inst.limit * 0.3,
+            invest: inst.limit * 0.2,
+            total: inst.limit
+         } : null,
+         quotaBreakdown: {
+           bill: 0.8,
+           finance: 0.15,
+           invest: 0.05
+         },
+         assignee: 'u-admin', // Assign to current user
+         applicantId: 'li-jianguo' // Assume Li submitted these
+       };
+    }
+
+    // Inject Whitelist Applications
+    if (idx === 8) {
+       return {
+         applicationId: `APP_WL_${idx}`,
+         approvalNo: `APR2026${String(300000 + idx).slice(-6)}`,
+         applicantName: '某待准入基金公司',
+         approvedAmount: '-',
+         amountValue: 0,
+         status: 'reviewing',
+         statusText: '准入审批中',
+         activeStep: 1,
+         timeline: buildTimeline('reviewing'),
+         type: 'WHITELIST',
+         creditRating: 'AA',
+         assignee: 'u-admin',
+         applicantId: 'li-jianguo'
+       };
+    }
+
     const status = statusDefs[idx % statusDefs.length];
     const amount = 300000 + idx * 52000;
     const applicationId = `APP2026${String(100000 + idx).slice(-6)}`;
@@ -100,11 +182,14 @@ const ensureSeedData = () => {
       approvalNo: `APR2026${String(100000 + idx).slice(-6)}`,
       applicantName: names[idx % 4],
       approvedAmount: amountText(amount),
+      amountValue: amount,
       status: status.key,
       statusText: status.text,
       activeStep: status.step,
       timeline: buildTimeline(status.key),
-      createdAt: new Date(Date.now() - idx * 3600000).toISOString()
+      type: 'CREDIT',
+      createdAt: new Date(Date.now() - idx * 3600000).toISOString(),
+      applicantId: 'li-jianguo' // Default to Li
     };
   });
 
@@ -181,36 +266,7 @@ const customersData = [
       assetManageExposure: 0
     }
   },
-  {
-    id: 'C004',
-    name: '浦发银行',
-    status: '未纳入',
-    type: '银行金融机构',
-    hasInProcess: true,
-    processId: 'LC202602120001',
-    hasValidQuota: true,
-    previousQuota: {
-      totalExposure: 2100000000,
-      selfRunExposure: 1400000000,
-      assetManageExposure: 700000000
-    }
-  },
-  {
-    id: 'C005',
-    name: '李建国',
-    status: '生效',
-    type: '自然人',
-    customerType: 'INDIVIDUAL',
-    hasInProcess: false,
-    hasValidQuota: true,
-    existingLimit: 2000000,
-    creditRating: '',
-    previousQuota: {
-      totalExposure: 2000000,
-      selfRunExposure: 2000000,
-      assetManageExposure: 0
-    }
-  },
+
   {
     id: 'C006',
     name: '东方商业银行总行',
@@ -285,18 +341,48 @@ export const mockRequest = async ({ method, path, body, headers }) => {
     captchaStore.delete(payload.captchaToken);
 
     const user = USERS.find((u) => u.username === payload.username && u.password === payload.password);
-    if (!user) throw jsonError(401, '\u8d26\u53f7\u6216\u5bc6\u7801\u9519\u8bef');
+    if (!user) throw jsonError(401, '账号或密码错误');
+
+    const rolePrefix = user.role === 'APPLICANT' ? 'applicant-token-' : 'approver-token-';
+    const menus = user.role === 'APPLICANT' 
+      ? [{ title: '工作台', path: '/workbench' }, { title: '发起申请', path: '/apply' }] 
+      : [{ title: '审批台', path: '/progress' }];
 
     return {
-      accessToken: `mock_token_${makeId('')}`,
+      accessToken: `${rolePrefix}${makeId('')}`,
       expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 2).toISOString(),
-      user: { id: user.id, name: user.name }
+      user: { 
+        id: user.id, 
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar,
+        dept: user.dept,
+        menus
+      }
     };
   }
 
   const token = headers?.Authorization?.replace('Bearer ', '') || '';
-  if (!token || !token.startsWith('mock_token_')) {
-    throw jsonError(401, '\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548');
+  if (!token || (!token.startsWith('mock_token_') && !token.startsWith('applicant-token-') && !token.startsWith('approver-token-'))) {
+    throw jsonError(401, '登录状态已失效');
+  }
+
+  if (method === 'GET' && cleanPath === '/api/user/summary') {
+    // Determine user role from token for mock purposes
+    // In real app, we decode token. Here we check prefix.
+    const isApprover = token.startsWith('approver-token-');
+    const rows = readApplications();
+
+    if (isApprover) {
+       const pending = rows.filter(r => r.status === 'reviewing' && r.assignee === 'u-admin').length;
+       const highRisk = rows.filter(r => r.assignee === 'u-admin' && (r.amountValue > 3000000000 || r.creditRating?.includes('B'))).length;
+       return { pendingCount: pending, highRiskCount: highRisk };
+    } else {
+       // Applicant summary
+       const inProgress = rows.filter(r => ['reviewing', 'pending'].includes(r.status)).length;
+       const returned = rows.filter(r => r.status === 'rejected').length; // Mock rejected as returned for simplicity
+       return { inProgressCount: inProgress, returnedCount: returned };
+    }
   }
 
   if (method === 'POST' && cleanPath === '/api/uploads/id-cards') {
@@ -328,6 +414,7 @@ export const mockRequest = async ({ method, path, body, headers }) => {
       approvalNo: `APR${Date.now().toString().slice(-10)}`,
       applicantName: payload.customerName,
       approvedAmount: amountText(amount),
+      amountValue: amount,
       status: status.key,
       statusText: status.text,
       activeStep: status.step,
@@ -442,7 +529,7 @@ export const mockRequest = async ({ method, path, body, headers }) => {
       };
     }
 
-    if (customerId === 'C004' || totalExposure > 5000000000 || detailExposure > 3200000000) {
+    if (totalExposure > 5000000000 || detailExposure > 3200000000) {
       return {
         pass: false,
         riskLevel: 'medium',
@@ -457,6 +544,50 @@ export const mockRequest = async ({ method, path, body, headers }) => {
       hitType: 'none',
       message: '风险探测通过'
     };
+  }
+
+  if (method === 'POST' && cleanPath === '/api/loan/approve') {
+    const payload = body || {};
+    const { applicationId, action, reason } = payload;
+    const rows = readApplications();
+    const row = rows.find(r => r.applicationId === applicationId);
+    
+    if (!row) throw jsonError(404, '申请不存在');
+    
+    if (action === 'approve') {
+       row.status = 'disbursed';
+       // Check type
+       if (row.type === 'WHITELIST') {
+          row.statusText = '已准入';
+          // Find customer and update status
+          // In a real app, this would be linked by ID. Here we assume we just update the customer list mock too?
+          // Or we just update the application status.
+          // Let's also update the customer data if possible.
+          // Since we don't have a direct link in this mock structure easily without more complex data,
+          // We will just update the application status text.
+          // But requirement says: "Update Mock status to '生效'".
+          // Let's assume there is a matching customer in `customersData`.
+          const customer = customersData.find(c => c.name === row.applicantName);
+          if (customer) customer.status = '生效';
+       } else {
+          row.statusText = '已放款';
+       }
+       row.activeStep = 3;
+       row.timeline.push({ title: '审批通过', time: new Date().toISOString() });
+    } else if (action === 'reject') {
+       row.status = 'rejected';
+       row.statusText = row.type === 'WHITELIST' ? '准入拒绝' : '已拒绝';
+       row.timeline.push({ title: '审批拒绝', time: new Date().toISOString() });
+    } else if (action === 'return') {
+       row.status = 'returned'; // New status for return
+       row.statusText = '已退回';
+       row.returnReason = reason; // Store reason
+       row.activeStep = 0; // Reset step
+       row.timeline.push({ title: '退回补充材料', time: new Date().toISOString() });
+    }
+    
+    writeApplications(rows);
+    return { success: true };
   }
 
   throw jsonError(404, `\u672a\u5339\u914d\u5230\u63a5\u53e3: ${method} ${cleanPath}`);

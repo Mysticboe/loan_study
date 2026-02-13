@@ -7,20 +7,9 @@
       <section class="header-row">
         <div>
           <p class="eyebrow">Loan Studio</p>
-          <h1>{{ isEditMode ? '修改授信申请' : '同业授信复杂申请' }}</h1>
+          <h1>同业授信复杂申请</h1>
         </div>
       </section>
-
-      <!-- 退回原因浮窗 (破) -->
-      <van-notice-bar
-        v-if="isEditMode && returnReason"
-        left-icon="info-o"
-        :text="`被退回原因：${returnReason}`"
-        color="#ed6a0c"
-        background="#fffbe8"
-        mode="closeable"
-        class="return-notice"
-      />
 
       <section class="panel">
         <van-steps :active="activeStep" active-color="#0f766e" inactive-color="#9aa8b6" class="steps">
@@ -30,9 +19,8 @@
 
         <van-form @submit="handleSubmit">
           <div v-show="activeStep === 0" class="step-card">
-            <van-cell-group inset :class="['customer-card', cardThemeClass]">
-              <div v-if="isHighRisk" class="risk-banner">高风险关注</div>
-              <van-field v-model="customerKeyword" label="客户检索" placeholder="搜索同业金融机构" clearable />
+            <van-cell-group inset>
+              <van-field v-model="customerKeyword" label="客户检索" placeholder="输入客户名称/编号" clearable />
               <div class="search-row">
                 <van-button
                   type="primary"
@@ -45,23 +33,6 @@
                 </van-button>
               </div>
               <van-field v-model="applyForm.customerName" label="客户名称" readonly />
-              
-              <!-- 信用等级与机构类型标签展示区 -->
-              <div class="tags-row" v-if="applyForm.customerName">
-                <div class="tag-item">
-                  <span class="tag-label">信用等级</span>
-                  <van-tag v-if="applyForm.creditRating" :type="creditRatingType" size="medium">
-                    {{ applyForm.creditRating }}
-                    <span v-if="creditRatingType === 'danger'" style="margin-left: 4px; font-size: 10px;">需加强风险审查</span>
-                  </van-tag>
-                  <van-tag v-else color="#969799" size="medium">未评级</van-tag>
-                </div>
-                <div class="tag-item" v-if="applyForm.customerType">
-                  <span class="tag-label">机构类型</span>
-                  <van-tag color="#1989fa" size="medium" plain>{{ applyForm.customerType }}</van-tag>
-                </div>
-              </div>
-
               <van-field v-model="applyForm.customerNo" label="客户编号" readonly />
               <van-field v-model="applyForm.occurrenceType" label="发生类型" readonly />
             </van-cell-group>
@@ -82,10 +53,6 @@
                 suffix="元"
                 placeholder="请输入"
               />
-              <div v-if="isInstitution && applyForm.totalCredit.cny" class="amount-display">
-                <span class="uppercase">{{ digitUppercase(applyForm.totalCredit.cny) }}</span>
-                <span class="unit-hint">({{ formatBigNumber(applyForm.totalCredit.cny) }})</span>
-              </div>
               <van-field
                 v-model.number="applyForm.totalCredit.usd"
                 type="number"
@@ -103,21 +70,15 @@
                 label="自营类额度(人民币)"
                 suffix="元"
                 placeholder="请输入"
-                :class="{ 'field-error': overSelfLimit || isLimitTriggered }"
-                :label-class="isLimitTriggered ? 'warn-label' : ''"
+                :class="{ 'field-error': overSelfLimit }"
               />
-              <div v-if="isInstitution && applyForm.selfRunLimit.cny" class="amount-display">
-                <span class="uppercase">{{ digitUppercase(applyForm.selfRunLimit.cny) }}</span>
-                <span class="unit-hint">({{ formatBigNumber(applyForm.selfRunLimit.cny) }})</span>
-              </div>
               <van-field
                 v-model.number="applyForm.selfRunLimit.usd"
                 type="number"
                 label="自营类额度(美元)"
                 suffix="USD"
                 placeholder="请输入"
-                :class="{ 'field-error': overSelfLimit || isLimitTriggered }"
-                :label-class="isLimitTriggered ? 'warn-label' : ''"
+                :class="{ 'field-error': overSelfLimit }"
               />
               <van-field
                 :model-value="formatAmount(applyForm.selfRunLimit.totalExposure)"
@@ -141,17 +102,6 @@
                 placeholder="请输入"
               />
               <van-field :model-value="formatAmount(applyForm.assetManageLimit.totalExposure)" label="资管类总敞口" readonly />
-              <van-field
-                v-if="showEnhancement"
-                v-model="applyForm.enhancementMeasures"
-                label="增信措施说明"
-                type="textarea"
-                rows="2"
-                autosize
-                required
-                placeholder="因信用等级较低，请详细说明风险缓释方案"
-                class="enhancement-field"
-              />
             </van-cell-group>
 
             <van-collapse v-model="collapseNames" class="collapse-wrap">
@@ -174,25 +124,22 @@
                     placeholder="请输入"
                     :class="{ 'field-error': overSelfLimit }"
                   />
-                  <div class="product-box" v-if="computeExposure(applyForm.selfRunLimit.details[item.key].cny, applyForm.selfRunLimit.details[item.key].usd) > 0">
+                  <div class="product-box">
                     <div class="product-title">适用产品</div>
                     <van-checkbox-group v-model="applyForm.selfRunLimit.details[item.key].products" direction="horizontal">
                       <van-checkbox
-                        v-for="option in (productOptionsMap[item.key] || [])"
-                        :key="option.value"
+                        v-for="option in productOptions"
+                        :key="`${item.key}-${option.value}`"
                         :name="option.value"
                         shape="square"
                       >
-                        {{ option.text }}
+                        {{ option.label }}
                       </van-checkbox>
                     </van-checkbox-group>
                   </div>
                 </div>
                 <div class="sum-text" :class="{ warn: overSelfLimit }">
                   分项合计敞口：{{ formatAmount(selfDetailExposureTotal) }} 元
-                  <span v-if="isInstitution && selfDetailExposureTotal" class="unit-hint">
-                    ({{ formatBigNumber(selfDetailExposureTotal) }})
-                  </span>
                 </div>
               </van-collapse-item>
             </van-collapse>
@@ -227,9 +174,9 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant';
-import { useRouter, useRoute } from 'vue-router';
-import { createLoanApplication, fetchLoanProducts, probeCreditRisk, searchCustomers, fetchLoanApplicationDetail } from '../api/loan';
+import { showFailToast, showSuccessToast, showToast } from 'vant';
+import { useRouter } from 'vue-router';
+import { createLoanApplication, probeCreditRisk, searchCustomers } from '../api/loan';
 
 const activeStep = ref(0);
 const searching = ref(false);
@@ -238,59 +185,14 @@ const customerKeyword = ref('');
 const collapseNames = ref(['self-detail']);
 const exchangeRate = ref(7.2);
 const overWarned = ref(false);
-const isInstitution = ref(false);
-const isLimitTriggered = ref(false);
 const router = useRouter();
-const route = useRoute();
 
-const isEditMode = ref(false);
-const returnReason = ref('');
-const applicationId = ref('');
-
-const productOptionsMap = reactive({});
-
-const categoryMapping = {
-  bill: 'bill',
-  financing: 'finance',
-  interbankInvestment: 'invest'
-};
-
-function digitUppercase(n) {
-  if (!n || isNaN(n)) return '';
-  const fraction = ['角', '分'];
-  const digit = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'];
-  const unit = [['元', '万', '亿'], ['', '拾', '佰', '仟']];
-  const head = n < 0 ? '欠' : '';
-  n = Math.abs(n);
-  let s = '';
-  for (let i = 0; i < fraction.length; i++) {
-    s += (digit[Math.floor(n * 10 * Math.pow(10, i)) % 10] + fraction[i]).replace(/零./, '');
-  }
-  s = s || '整';
-  n = Math.floor(n);
-  for (let i = 0; i < unit[0].length && n > 0; i++) {
-    let p = '';
-    for (let j = 0; j < unit[1].length && n > 0; j++) {
-      p = digit[n % 10] + unit[1][j] + p;
-      n = Math.floor(n / 10);
-    }
-    s = p.replace(/(零.)*零$/, '').replace(/^$/, '零') + unit[0][i] + s;
-  }
-  return head + s.replace(/(零.)*零元/, '元').replace(/(零.)+/g, '零').replace(/^整$/, '零元整');
-}
-
-function formatBigNumber(value) {
-  if (!value) return '';
-  const num = Number(value);
-  if (num >= 100000000) {
-    return (num / 100000000).toFixed(2) + ' 亿元';
-  }
-  if (num >= 10000) {
-    return (num / 10000).toFixed(2) + ' 万元';
-  }
-  return num + ' 元';
-}
-
+const productOptions = [
+  { label: '短融', value: 'short_finance' },
+  { label: '同业存单', value: 'interbank_cd' },
+  { label: '信托计划', value: 'trust_plan' },
+  { label: '资产支持', value: 'abs' }
+];
 
 const selfDetailConfigs = [
   { key: 'bill', label: '票据' },
@@ -310,10 +212,7 @@ const previousQuota = reactive({
 const applyForm = reactive({
   customerName: '',
   customerNo: '',
-  customerType: '',
   occurrenceType: '',
-  creditRating: '',
-  enhancementMeasures: '',
   totalCredit: {
     cny: 0,
     usd: 0,
@@ -348,45 +247,6 @@ const selfDetailExposureTotal = computed(() =>
 
 const overSelfLimit = computed(() => selfDetailExposureTotal.value > applyForm.selfRunLimit.totalExposure);
 
-const creditRatingType = computed(() => {
-  const level = applyForm.creditRating;
-  if (level === 'AAA') return 'success';
-  if (['AA+', 'AA'].includes(level)) return 'warning';
-  return 'danger';
-});
-
-const isHighRisk = computed(() => {
-  // A级及以下或者未评级且不是个人客户（这里已经是机构了）
-  // 简单逻辑：如果 creditRatingType 是 danger 且有 rating，则是高风险
-  // 或者如果没有 rating 也可以视为关注
-  // 指令：等级低于 AA，则在卡片顶部出现一个红色的“高风险关注”标识。
-  const level = applyForm.creditRating;
-  if (!level) return false; 
-  if (level === 'AAA' || level === 'AA+' || level === 'AA') return false;
-  return true;
-});
-
-const cardThemeClass = computed(() => {
-  if (applyForm.creditRating === 'AAA') return 'gold-bg';
-  if (isHighRisk.value) return 'risk-bg';
-  return '';
-});
-
-const showEnhancement = computed(() => {
-  if (!isInstitution.value || !applyForm.creditRating) return false;
-  // AAA 不显示，其他（包括 AA+, AA, A...）显示
-  // 根据指令：AAA 级自动隐藏。当等级较低（如 AA-，这里理解为非 AAA）时展开。
-  return applyForm.creditRating !== 'AAA';
-});
-
-const limitRules = {
-  'AAA': Infinity,
-  'AA': 500000000, // 5亿
-  'AA+': 500000000, // 假设 AA+ 也受限，或者按指令仅 AA 受限？指令说 "AA 级...不超过 5 亿"。为安全起见，非 AAA 设个限额比较合理，但严格按指令 "AA 级"。
-  // 修正：C008 西部基金是 AA，C007 南方证券是 AA+。指令 "AA 级自营...不超过 5 亿"。
-  // 我们严格匹配 'AA'。
-};
-
 function toNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
@@ -409,51 +269,10 @@ function syncExposure() {
   applyForm.assetManageLimit.totalExposure = computeExposure(applyForm.assetManageLimit.cny, applyForm.assetManageLimit.usd);
 }
 
-// 破（逻辑联动）：利用 watch 实时监控自营类总额度的变化
-watch(
-  () => applyForm.selfRunLimit.totalExposure,
-  (newTotal) => {
-    // 这里可以加入更复杂的逻辑，比如动态调整分项的 max 属性
-    // 目前主要是触发 computed 的 overSelfLimit 重新计算
-    if (newTotal > 0 && overSelfLimit.value) {
-      showToast('注意：当前分项合计已超过新的自营总额');
-    }
-  }
-);
-
 function fillCustomer(customer) {
-  // 2. 破：建立“类型防火墙”拦截
-  if (customer?.customerType === 'INDIVIDUAL') {
-    showConfirmDialog({
-      title: '合规预警',
-      message: '同业授信模块仅限金融机构法人申请。个人客户请引导至[零售贷款]模块。',
-      confirmButtonText: '知道了',
-      showCancelButton: false
-    }).then(() => {
-      // 清空非法数据
-      applyForm.customerName = '';
-      applyForm.customerNo = '';
-      customerKeyword.value = '';
-      isInstitution.value = false;
-    });
-    return;
-  }
-
-  isInstitution.value = customer?.customerType === 'INSTITUTION';
   applyForm.customerName = customer?.name || '';
   applyForm.customerNo = customer?.id || '';
-  applyForm.customerType = customer?.type || '';
-  applyForm.creditRating = customer?.creditRating || '';
-  applyForm.enhancementMeasures = '';
-  isLimitTriggered.value = false;
-  
-  // 核心逻辑：利用 existingLimit 判断发生类型
-  if (customer?.existingLimit > 0) {
-    applyForm.occurrenceType = '续作';
-  } else {
-    applyForm.occurrenceType = customer?.hasValidQuota ? '续作' : '新增';
-  }
-
+  applyForm.occurrenceType = customer?.hasValidQuota ? '续作' : '新增';
   previousQuota.totalExposure = toNumber(customer?.previousQuota?.totalExposure);
   previousQuota.selfRunExposure = toNumber(customer?.previousQuota?.selfRunExposure);
   previousQuota.assetManageExposure = toNumber(customer?.previousQuota?.assetManageExposure);
@@ -490,16 +309,6 @@ function validateSubmit() {
   if (applyForm.totalCredit.totalExposure <= 0) return '请填写总额度';
   if (applyForm.selfRunLimit.totalExposure <= 0) return '请填写自营类额度';
   if (overSelfLimit.value) return '自营类分项合计不得超过自营类总额';
-  if (showEnhancement.value && !applyForm.enhancementMeasures) return '请填写增信措施说明';
-  
-  for (const config of selfDetailConfigs) {
-    const detail = applyForm.selfRunLimit.details[config.key];
-    const exposure = computeExposure(detail.cny, detail.usd);
-    if (exposure > 0 && (!detail.products || detail.products.length === 0)) {
-      return `${config.label}分项已填额度，请选择适用产品`;
-    }
-  }
-
   return '';
 }
 
@@ -529,7 +338,6 @@ async function handleSubmit() {
         customerName: applyForm.customerName,
         idCard: '110101199001010011',
         birthDate: '1990-01-01',
-        amount: Number(applyForm.totalCredit.totalExposure),
         collateralValue: Math.max(1, Number(applyForm.totalCredit.totalExposure) || 1),
         idCardFileIds: ['detail_virtual_file']
       },
@@ -563,45 +371,6 @@ watch(
   { immediate: true }
 );
 
-// 2. 破：基于等级的“刚控”逻辑
-watch(
-  () => applyForm.selfRunLimit.totalExposure,
-  (newVal) => {
-    const rating = applyForm.creditRating;
-    // 简单起见，这里假设 limitRules 中未定义的等级暂不限额，或者默认为 Infinity
-    // 如果要更严谨，可以定义默认限额
-    const limit = limitRules[rating];
-    
-    if (limit && newVal > limit) {
-      showFailToast(`风险刚控：${rating}级客户自营限额 ${formatBigNumber(limit)}`);
-      // 强制回滚
-      // 注意：这里需要根据当前是输入的人民币还是美元来回滚，比较复杂。
-      // 简化处理：直接重置为 0 或者 尝试智能回滚。
-      // 由于 totalExposure 是计算属性派生的（虽然在 applyForm 里存了），我们不能直接改 totalExposure。
-      // 我们需要改 cny 或 usd。
-      // 简单策略：如果仅输入了 CNY，就改 CNY。
-      
-      // 更好的体验：修改导致超限的那个输入框的值。但 watch 无法知道是谁触发的。
-      // 我们可以简单地将 CNY 设为 limit（假设汇率影响忽略或无美元），或者更暴力地提示用户手动修改。
-      // 指令要求：“将数值强制回滚至 5 亿”。
-      
-      // 尝试回滚 CNY：
-      if (applyForm.selfRunLimit.cny > limit) {
-        applyForm.selfRunLimit.cny = limit;
-      } else if (applyForm.selfRunLimit.usd * exchangeRate.value > limit) {
-        // 如果是美元超了
-        applyForm.selfRunLimit.usd = Math.floor(limit / exchangeRate.value);
-      }
-      
-      // 重新计算 exposure 以同步视图
-      syncExposure();
-      isLimitTriggered.value = true;
-    } else {
-      isLimitTriggered.value = false;
-    }
-  }
-);
-
 watch(overSelfLimit, (isOver) => {
   if (isOver && !overWarned.value) {
     showToast('刚控提示：分项金额不得超过自营总额');
@@ -613,60 +382,8 @@ watch(overSelfLimit, (isOver) => {
   }
 });
 
-async function loadProducts() {
-  for (const config of selfDetailConfigs) {
-    const apiCategory = categoryMapping[config.key];
-    if (apiCategory) {
-      try {
-        const products = await fetchLoanProducts(apiCategory);
-        productOptionsMap[config.key] = products;
-      } catch (e) {
-        console.error('Failed to load products for', config.key, e);
-      }
-    }
-  }
-}
-
-async function loadEditData() {
-  const id = route.query.applicationId;
-  if (!id) return;
-
-  try {
-    const detail = await fetchLoanApplicationDetail(id);
-    if (detail.status === 'returned') {
-      isEditMode.value = true;
-      returnReason.value = detail.returnReason;
-      applicationId.value = detail.applicationId;
-      
-      // Restore Form Data
-      applyForm.customerName = detail.applicantName;
-      // Mock logic: we don't have full customer object in detail response usually, 
-      // but let's assume we can fetch it or fill minimal info.
-      // In real app, we'd fetch customer by name or ID.
-      // Here we simulate searching to get full customer profile again if needed,
-      // or just fill what we have.
-      // Let's try to "search" by name to restore full state.
-      customerKeyword.value = detail.applicantName;
-      await handleSearchCustomer();
-      
-      // Restore Quotas (Mock mapping, assuming detail structure matches)
-      applyForm.totalCredit.totalExposure = detail.amountValue;
-      applyForm.totalCredit.cny = detail.amountValue; // Simplification
-      
-      // Restore breakdown if available
-      if (detail.quotaBreakdown) {
-         applyForm.selfRunLimit.totalExposure = detail.amountValue * (detail.quotaBreakdown.bill + detail.quotaBreakdown.finance + detail.quotaBreakdown.invest);
-         // ... Map other fields roughly for demo
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load edit data', error);
-  }
-}
-
 onMounted(async () => {
-  loadProducts();
-  await loadEditData();
+  await handleSearchCustomer();
 });
 </script>
 
@@ -710,11 +427,6 @@ onMounted(async () => {
   max-width: 600px;
   margin: 0 auto;
   padding: 56px 16px 28px;
-}
-
-.return-notice {
-  margin: 0 12px 12px;
-  border-radius: 8px;
 }
 
 .header-row {
@@ -868,84 +580,5 @@ h1 {
     transform: translateY(0);
     opacity: 1;
   }
-}
-
-.amount-display {
-  padding: 4px 16px 12px;
-  background: rgba(255, 255, 255, 0.82);
-  color: #0f766e;
-  font-size: 13px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.amount-display .uppercase {
-  font-family: 'STKaiti', serif;
-}
-
-.amount-display .unit-hint {
-  color: #62707d;
-  font-size: 12px;
-}
-
-.warn-label {
-  color: #b42318 !important;
-  font-weight: bold;
-}
-
-/* 标签行样式 */
-.tags-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 16px 12px;
-  background: inherit; /* 继承父背景，保证渐变效果 */
-}
-
-.tag-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.tag-label {
-  font-size: 12px;
-  color: #64748b;
-}
-
-/* 客户卡片主题 */
-.customer-card {
-  position: relative;
-  transition: all 0.3s ease;
-  overflow: hidden; /* 保证 banner 不溢出 */
-}
-
-.gold-bg {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 248, 225, 0.6)) !important;
-  border: 1px solid rgba(255, 215, 0, 0.3);
-}
-
-.risk-bg {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(254, 242, 242, 0.6)) !important;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-}
-
-.risk-banner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 24px;
-  background: #fee2e2;
-  color: #b91c1c;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: 1px;
-  z-index: 10;
 }
 </style>

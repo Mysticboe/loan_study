@@ -72,7 +72,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
-import { showFailToast, showSuccessToast } from 'vant';
+import { showFailToast, showSuccessToast, showLoadingToast } from 'vant';
 import { useRoute, useRouter } from 'vue-router';
 import AppSkeleton from '../components/AppSkeleton.vue';
 import { fetchCaptcha, loginByPassword } from '../api/auth';
@@ -126,8 +126,37 @@ const handleLogin = async () => {
       captchaCode: form.captchaInput
     });
     saveSession(session);
-    showSuccessToast('登录成功');
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/workbench';
+    
+    // Role handling
+    const userRole = session.user?.role || 'APPLICANT';
+    const username = session.user?.name || form.username;
+    localStorage.setItem('user_role', userRole);
+    localStorage.setItem('user_name', username);
+    
+    const loadingToast = showLoadingToast({
+      message: '正在进入工作台...',
+      forbidClick: true,
+      duration: 0
+    });
+
+    // Simulated delay for effect
+    await new Promise(resolve => setTimeout(resolve, 800));
+    loadingToast.close();
+
+    const welcomeTitle = userRole === 'APPROVER' ? '风险审批官' : '客户经理';
+    showSuccessToast(`欢迎回来，${welcomeTitle} ${username}`);
+    
+    let redirect = typeof route.query.redirect === 'string' ? route.query.redirect : null;
+    
+    // Role-based redirection
+    if (!redirect) {
+       if (userRole === 'APPROVER') {
+          redirect = '/progress'; // Approver dashboard (Task Hall)
+       } else {
+          redirect = '/workbench'; // Applicant workbench
+       }
+    }
+    
     await router.replace(redirect);
   } catch (error) {
     showFailToast(error.message || '登录失败');

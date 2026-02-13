@@ -41,3 +41,10 @@ export const fetchLoanProducts = (category) =>
     path: '/api/loan/products',
     query: { category }
   });
+
+export const submitApprovalDecision = (payload) =>
+  request({
+    method: 'POST',
+    path: '/api/loan/approve',
+    body: payload
+  });
