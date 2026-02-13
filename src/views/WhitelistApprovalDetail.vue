@@ -1,7 +1,7 @@
 <template>
   <div class="approval-page">
     <van-nav-bar
-      title="准入审批详情"
+      :title="isRevoke ? '准入失效清理审批' : '准入审批详情'"
       left-text="返回"
       left-arrow
       fixed
@@ -11,9 +11,9 @@
     <main v-if="detail" class="content">
       <!-- 基础信息 -->
       <section class="panel">
-        <div class="panel-header">
+        <div class="panel-header" :class="{ 'revoke-header': isRevoke }">
           <span class="title">机构信息</span>
-          <van-tag type="primary">准入申请</van-tag>
+          <van-tag :type="isRevoke ? 'warning' : 'primary'">{{ isRevoke ? '失效申请' : '准入申请' }}</van-tag>
         </div>
         <van-cell-group inset>
           <van-field label="机构名称" :model-value="detail.applicantName" readonly />
@@ -23,18 +23,18 @@
         </van-cell-group>
       </section>
 
-      <!-- 准入理由 -->
+      <!-- 申请理由 -->
       <section class="panel">
-        <div class="panel-header">
-          <span class="title">准入理由</span>
+        <div class="panel-header" :class="{ 'revoke-header': isRevoke }">
+          <span class="title">{{ isRevoke ? '失效原因' : '准入理由' }}</span>
         </div>
-        <div class="reason-content">
+        <div class="reason-content" :class="{ 'revoke-reason': isRevoke }">
           {{ detail.applyReason || '暂无详细理由' }}
         </div>
       </section>
 
-      <!-- 资质材料 (模拟) -->
-      <section class="panel">
+      <!-- 资质材料 (仅准入显示，失效可能不显示或显示证据) -->
+      <section class="panel" v-if="!isRevoke">
         <div class="panel-header">
           <span class="title">资质材料</span>
         </div>
@@ -50,6 +50,22 @@
         </div>
       </section>
 
+      <!-- 审批流轨迹 (破) -->
+      <section class="panel">
+        <div class="panel-header">
+          <span class="title">审批轨迹</span>
+        </div>
+        <van-steps direction="vertical" :active="detail.auditHistory?.length || 0" active-color="#0f766e">
+          <van-step v-for="(log, index) in detail.auditHistory" :key="index">
+            <h3>{{ log.stage }} <span class="operator">({{ log.operator }})</span></h3>
+            <p v-if="log.comment" :class="{'error-text': log.status === 'error', 'warn-text': log.status === 'warning'}">
+              {{ log.comment }}
+            </p>
+            <p class="time">{{ new Date(log.time).toLocaleString() }}</p>
+          </van-step>
+        </van-steps>
+      </section>
+
       <div class="bottom-spacer"></div>
     </main>
     
@@ -58,13 +74,13 @@
     <!-- 审批决策操作栏 -->
     <van-action-bar v-if="detail && detail.status === 'reviewing'">
       <van-action-bar-button type="danger" text="拒绝" @click="handleReject" />
-      <van-action-bar-button type="primary" text="通过" color="#7232dd" @click="handleApprove" />
+      <van-action-bar-button type="primary" text="通过" :color="isRevoke ? '#f59e0b' : '#7232dd'" @click="handleApprove" />
     </van-action-bar>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showConfirmDialog, showDialog, showSuccessToast, showLoadingToast, showFailToast } from 'vant';
 import { fetchLoanApplicationDetail, submitApprovalDecision } from '../api/loan';
@@ -74,10 +90,11 @@ const route = useRoute();
 const router = useRouter();
 const detail = ref(null);
 
+const isRevoke = computed(() => detail.value?.type === 'WHITELIST_REVOKE');
+
 const loadDetail = async () => {
   try {
     const id = route.params.applicationId;
-    // Reuse existing detail fetcher since mock structure is similar
     detail.value = await fetchLoanApplicationDetail(id);
   } catch (error) {
     showFailToast('加载失败');
@@ -86,11 +103,17 @@ const loadDetail = async () => {
 };
 
 const handleApprove = () => {
+  const title = isRevoke.value ? '确认失效清理' : '准入审批确认';
+  const message = isRevoke.value 
+    ? `确认同意废止“${detail.value.applicantName}”的准入资格？\n操作后该机构状态将立即变为【失效】，且不可逆。`
+    : `确认批准“${detail.value.applicantName}”的准入资格？\n批准后该机构状态将变更为【生效】。`;
+  const confirmColor = isRevoke.value ? '#f59e0b' : '#7232dd';
+
   showConfirmDialog({
-    title: '准入审批确认',
-    message: `确认批准“${detail.value.applicantName}”的准入资格？\n批准后该机构状态将变更为【生效】。`,
+    title,
+    message,
     confirmButtonText: '确认批准',
-    confirmButtonColor: '#7232dd'
+    confirmButtonColor: confirmColor
   }).then(async () => {
     const loading = showLoadingToast({ message: '处理中...', duration: 0 });
     try {
@@ -100,7 +123,7 @@ const handleApprove = () => {
         action: 'approve'
       });
       loading.close();
-      showSuccessToast('准入审批已通过');
+      showSuccessToast('审批已通过');
       router.back();
     } catch (error) {
       loading.close();
@@ -111,7 +134,7 @@ const handleApprove = () => {
 
 const handleReject = () => {
   showDialog({
-    title: '拒绝准入',
+    title: isRevoke.value ? '拒绝失效申请' : '拒绝准入',
     message: '请输入拒绝理由：',
     showCancelButton: true,
     confirmButtonColor: '#ee0a24',
@@ -121,7 +144,7 @@ const handleReject = () => {
        await submitApprovalDecision({
          applicationId: detail.value.applicationId,
          action: 'reject',
-         reason: '资质不符' 
+         reason: '审批不通过' 
        });
        showSuccessToast('已拒绝');
        router.back();
@@ -164,6 +187,10 @@ onMounted(() => {
   border-left: 3px solid #7232dd; /* Purple for Whitelist */
 }
 
+.panel-header.revoke-header {
+  border-left-color: #f59e0b; /* Orange for Revoke */
+}
+
 .title {
   font-weight: 600;
   font-size: 16px;
@@ -178,6 +205,12 @@ onMounted(() => {
   padding: 8px;
   background: #f8fafc;
   border-radius: 6px;
+}
+
+.reason-content.revoke-reason {
+  background: #fffbe8;
+  color: #b45309;
+  font-weight: 500;
 }
 
 .file-list {
@@ -195,6 +228,28 @@ onMounted(() => {
   border-radius: 6px;
   color: #475569;
   font-size: 14px;
+}
+
+.operator {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: normal;
+}
+
+.time {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.error-text {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.warn-text {
+  color: #f59e0b;
+  font-weight: 500;
 }
 
 .bottom-spacer {

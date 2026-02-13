@@ -544,12 +544,21 @@ async function submitInvalidate() {
     submittingInvalidate.value = true;
     
     try {
-      await invalidateCustomer(selectedInvalidateId.value, invalidateReason.value);
-      showSuccessToast('准入资格已废止');
-      // 刷新列表
-      refreshInvalidateList();
-      selectedInvalidateId.value = '';
-      invalidateReason.value = '';
+      // 1. 守：规范失效申请的任务注入
+      // 使用 createLoanApplication 提交，type: 'WHITELIST_REVOKE'
+      await createLoanApplication({
+        customerId: selectedInvalidateId.value,
+        customerName: selectedInvalidateCustomer.value?.name,
+        amount: 0,
+        applyReason: invalidateReason.value,
+        type: 'WHITELIST_REVOKE'
+      });
+      
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      showSuccessToast('准入失效申请已提交，请等待风险管理部审批');
+      router.replace('/progress');
+
+      // Old Logic Removed: invalidateCustomer direct call
     } catch (error) {
       showFailToast(error?.message || '操作失败');
     } finally {

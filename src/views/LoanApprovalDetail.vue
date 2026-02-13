@@ -108,19 +108,13 @@
         <div class="panel-header">
           <span class="title">流转历史</span>
         </div>
-        <van-steps direction="vertical" :active="2" active-color="#0f766e">
-          <van-step>
-            <h3>客户经理提交</h3>
-            <p>{{ formatDate(new Date(Date.now() - 86400000 * 2)) }}</p>
-          </van-step>
-          <van-step>
-            <h3>部门负责人初审</h3>
-            <p>意见：同意报送，建议关注集团集中度。</p>
-            <p>{{ formatDate(new Date(Date.now() - 86400000)) }}</p>
-          </van-step>
-          <van-step>
-            <h3>风险审批官审批</h3>
-            <p>当前环节</p>
+        <van-steps direction="vertical" :active="detail.auditHistory?.length || 0" active-color="#0f766e">
+           <van-step v-for="(log, index) in detail.auditHistory" :key="index">
+            <h3>{{ log.stage }} <span class="operator">({{ log.operator }})</span></h3>
+            <p v-if="log.comment" :class="{'error-text': log.status === 'error', 'warn-text': log.status === 'warning'}">
+              {{ log.comment }}
+            </p>
+            <p class="time">{{ new Date(log.time).toLocaleString() }}</p>
           </van-step>
         </van-steps>
       </section>
@@ -390,6 +384,28 @@ onMounted(() => {
   background: #fff5f5;
   padding: 8px;
   border-radius: 4px;
+}
+
+.operator {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: normal;
+}
+
+.time {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.error-text {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.warn-text {
+  color: #f59e0b;
+  font-weight: 500;
 }
 
 .bottom-spacer {

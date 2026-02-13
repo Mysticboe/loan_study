@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <AppSkeleton v-if="pageLoading" />
   <div v-else class="list-page">
     <div class="bg-shape bg-shape-a"></div>
@@ -39,7 +39,7 @@
                 >
                   <header class="card-header">
                     <div class="header-left">
-                      <van-tag :type="item.type === 'WHITELIST' ? 'primary' : 'success'" color="#7232dd" plain v-if="item.type === 'WHITELIST'">准入</van-tag>
+                      <van-tag :type="getWhitelistTagType(item.type)" color="#7232dd" plain v-if="isWhitelistType(item.type)">{{ getWhitelistLabel(item.type) }}</van-tag>
                       <span class="inst-name">{{ item.applicantName }}</span>
                       <van-tag v-if="item.creditRating" plain type="primary" class="rating-tag">{{ item.creditRating }}</van-tag>
                     </div>
@@ -328,13 +328,24 @@ const isRiskWarning = (item) => {
 
 const handleCardClick = (item) => {
   if (isApprover.value) {
-    if (item.type === 'WHITELIST') {
+    if (item.type === 'WHITELIST' || item.type === 'WHITELIST_REVOKE') {
       router.push(`/approval/whitelist/${item.applicationId}`);
     } else {
       router.push(`/approval/${item.applicationId}`);
     }
   } else {
-    toggleExpand(item.applicationId);
+    if (item.status === 'returned') {
+      // Direct user to re-edit if returned
+      // Check type to direct to correct form
+      if (item.type === 'WHITELIST' || item.type === 'WHITELIST_REVOKE') {
+         // Whitelist re-edit not implemented yet, or just show toast
+         showFailToast('准入相关申请被退回，请联系管理员重置');
+      } else {
+         router.push(`/apply-detail?applicationId=${item.applicationId}&mode=edit`);
+      }
+    } else {
+      toggleExpand(item.applicationId);
+    }
   }
 };
 
@@ -369,6 +380,18 @@ const showLogic = (item) => {
       message: `额度结构：\n票据 ${popoverActions.value[0].text}\n融资 ${popoverActions.value[1].text}\n投资 ${popoverActions.value[2].text}`,
       icon: 'chart-trending-o'
    });
+};
+
+const isWhitelistType = (type) => ['WHITELIST', 'WHITELIST_REVOKE'].includes(type);
+
+const getWhitelistLabel = (type) => {
+   if (type === 'WHITELIST_REVOKE') return '失效';
+   return '准入';
+};
+
+const getWhitelistTagType = (type) => {
+   if (type === 'WHITELIST_REVOKE') return 'warning';
+   return 'primary';
 };
 
 onMounted(async () => {
